@@ -1,0 +1,60 @@
+<!doctype html>
+<html lang="ru" dir="ltr">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <meta name="theme-color" content="#08090b" />
+    <meta name="color-scheme" content="dark" />
+    <link rel="icon" href="%sveltekit.assets%/favicon.svg" type="image/svg+xml" />
+    <link rel="apple-touch-icon" href="%sveltekit.assets%/favicon.svg" />
+
+    <!--
+      Тема применяется до первой отрисовки, иначе на загрузке моргает чужой цвет.
+      Cookie -> класс на <html>, с миграцией со старого localStorage. Ключи тем
+      не меняются между версиями именно из-за этого места.
+    -->
+    <script>
+      (() => {
+        const VALID = new Set(['default', 'frost', 'blue', 'teal', 'red', 'gray']);
+        const m = document.cookie.match(/(?:^|; )theme=([^;]+)/);
+        const fromCookie = m ? decodeURIComponent(m[1]) : null;
+        let legacy = null;
+        try {
+          legacy = localStorage.getItem('theme');
+        } catch {
+          // Приватный режим: localStorage может быть недоступен.
+        }
+        const theme = VALID.has(fromCookie) ? fromCookie : VALID.has(legacy) ? legacy : 'default';
+
+        if (theme !== 'default') document.documentElement.classList.add('theme-' + theme);
+
+        if (!VALID.has(fromCookie) && VALID.has(legacy)) {
+          document.cookie =
+            'theme=' + encodeURIComponent(theme) + '; Path=/; Max-Age=31536000; SameSite=Lax';
+          try {
+            localStorage.removeItem('theme');
+          } catch {}
+        }
+      })();
+    </script>
+
+    <link rel="preconnect" href="https://image.tmdb.org" />
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <!--
+      Unbounded — display-гарнитура с полной кириллицей (заголовки и знак).
+      Inter Tight — интерфейсная. Обе грузим здесь, а не в компоненте: шрифт,
+      подключённый в <svelte:head>, приезжает после первой отрисовки и даёт
+      заметный скачок текста.
+    -->
+    <link
+      href="https://fonts.googleapis.com/css2?family=Unbounded:wght@400;500;600;700;800&family=Inter+Tight:ital,wght@0,400;0,500;0,600;0,700;1,400&display=swap"
+      rel="stylesheet"
+    />
+
+    %sveltekit.head%
+  </head>
+  <body data-sveltekit-preload-data="hover">
+    <div style="display: contents">%sveltekit.body%</div>
+  </body>
+</html>

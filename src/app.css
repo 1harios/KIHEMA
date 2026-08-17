@@ -1,0 +1,895 @@
+@import 'tailwindcss';
+
+/*
+  Вариант tv:* для утилит. Порог 1920 выбран не «потому что 4K»: телевизор
+  смотрят с двух-трёх метров, и там решает не разрешение, а угловой размер —
+  на такой ширине почти всегда именно ТВ или очень большой монитор, где мелкий
+  кегль нечитаем.
+*/
+@custom-variant tv (@media (min-width: 1920px));
+
+/*
+  ============================================================================
+  КИНЕМА — слой токенов.
+  ============================================================================
+
+  Правило прежнее и оно работает: компоненты не знают цветов, они ходят через
+  var(--c-*). Добавить седьмую тему = дописать один блок.
+
+  Направление: «кинотеатральный монохром». Холст почти чёрный с холодным
+  подтоном, акцент — платина. Цвета в интерфейсе нет намеренно: единственное
+  цветное пятно на экране должен давать постер. Свечение серебряное, как свет
+  проектора в пыли, а не неон.
+*/
+
+:root {
+  /* --- холст ------------------------------------------------------------ */
+  --c-bg: #08090b;
+  --c-bg-elev: #0d0f13;
+  --c-surface: #121419;
+  --c-surface-2: #191c23;
+  --c-surface-3: #22262f;
+
+  --c-border: #262b34;
+  --c-border-soft: #191d24;
+  --c-border-strong: #363c48;
+
+  /* --- текст ------------------------------------------------------------ */
+  --c-text: #f2f4f8;
+  --c-text-dim: #9ba3b2;
+  --c-text-faint: #626a78;
+
+  /* --- акцент ----------------------------------------------------------- */
+  --c-accent: #dde3ed;
+  --c-accent-hover: #ffffff;
+  --c-accent-ink: #0a0b0e;
+  /* Мягкая подложка акцента для чипсов и активных состояний. */
+  --c-accent-soft: rgb(221 227 237 / 0.1);
+
+  /* Свечение. Отдельный токен-триплет, потому что в тёплых темах оно тёплое. */
+  --c-glow: 205 218 240;
+
+  /* --- семантика (приглушена, чтобы монохром не рассыпался) -------------- */
+  --c-good: #5cc98d;
+  --c-warn: #d9ab55;
+  --c-bad: #e0696c;
+
+  /* --- радиусы ---------------------------------------------------------- */
+  --r-xs: 6px;
+  --r-sm: 9px;
+  --r-md: 13px;
+  --r-lg: 18px;
+  --r-xl: 26px;
+  /* Обратная совместимость: старые компоненты просят --radius. */
+  --radius: var(--r-md);
+
+  /* --- тени ------------------------------------------------------------- */
+  --sh-1: 0 1px 2px rgb(0 0 0 / 0.4);
+  --sh-2: 0 8px 24px -10px rgb(0 0 0 / 0.75);
+  --sh-3: 0 24px 60px -18px rgb(0 0 0 / 0.85);
+  --sh-4: 0 40px 100px -24px rgb(0 0 0 / 0.9);
+  /* Псевдонимы для кода, который обращается к тени через var(). */
+  --shadow-card: var(--sh-2);
+  --shadow-pop: var(--sh-3);
+
+  /* --- свечение --------------------------------------------------------- */
+  --glow-sm: 0 0 0 1px rgb(var(--c-glow) / 0.14), 0 4px 18px -6px rgb(var(--c-glow) / 0.16);
+  --glow-md: 0 0 0 1px rgb(var(--c-glow) / 0.2), 0 8px 34px -8px rgb(var(--c-glow) / 0.24);
+  --glow-lg: 0 0 0 1px rgb(var(--c-glow) / 0.26), 0 16px 60px -12px rgb(var(--c-glow) / 0.32);
+
+  /* --- ритм ------------------------------------------------------------- */
+  /* Ширина левого рельса. Значение живёт здесь, потому что от него зависят
+     и сдвиг контента, и ширина «липких» шапок внутри страниц. */
+  --rail-w: 4.5rem;
+  /* Высота шапки. Ниже md — 3.5rem, дальше 4rem (см. AppRail). Отсюда её
+     вычитает герой главной, который занимает первый экран целиком. */
+  --header-h: 3.5rem;
+  /* Высота таб-бара на телефоне вместе с домашней полосой iPhone. Значение
+     нужно и для отступа снизу у контента, и для высоты того же героя: таб-бар
+     фиксированный, то есть лежит поверх страницы и сам места не занимает. */
+  --tabbar-h: calc(3.5rem + env(safe-area-inset-bottom));
+  --page-max: 1680px;
+  --gutter: 1rem;
+  /* Колонка под номер в нумерованном ряду. Фиксированная, чтобы «1» и «10»
+     занимали одинаковое место и постеры стояли ровно. */
+  --rank-w: 1.9rem;
+  /* Масштаб карточки в горизонтальном ряду. */
+  --card-w: 9.5rem;
+}
+
+@media (min-width: 768px) {
+  :root {
+    --header-h: 4rem;
+    /* Таб-бара на планшете и выше нет — только левый рельс. */
+    --tabbar-h: 0px;
+  }
+}
+
+@media (min-width: 640px) {
+  :root {
+    --gutter: 1.5rem;
+    --card-w: 10.5rem;
+  }
+}
+
+@media (min-width: 768px) {
+  :root {
+    --gutter: 2rem;
+    --rank-w: 2.6rem;
+    --card-w: 11rem;
+  }
+}
+
+/*
+  ТВ. Всё крупнее пропорционально, а не только шрифт: на 1920 с трёх метров
+  карточка в 11rem превращается в марку. Заодно шире рельс — иначе иконки в нём
+  не попасть пультом.
+*/
+@media (min-width: 1920px) {
+  :root {
+    --gutter: 3.5rem;
+    --rail-w: 6rem;
+    --rank-w: 3.6rem;
+    --card-w: 15rem;
+    --page-max: 1860px;
+  }
+
+  html {
+    font-size: 18px;
+  }
+}
+
+/* ==========================================================================
+   Темы. Меняют подтон холста и температуру свечения, но не яркость акцента —
+   иначе контраст текста на кнопках уезжает и приходится править компоненты.
+   ========================================================================== */
+
+/* Иней — холодный голубовато-белый, ближайший к базовому. */
+.theme-frost {
+  --c-bg: #070a0e;
+  --c-bg-elev: #0c1116;
+  --c-surface: #10161d;
+  --c-surface-2: #171f28;
+  --c-surface-3: #202a35;
+  --c-border: #243039;
+  --c-border-soft: #18212a;
+  --c-border-strong: #33414d;
+  --c-accent: #d5e7f2;
+  --c-accent-hover: #f2fbff;
+  --c-accent-ink: #06121a;
+  --c-accent-soft: rgb(213 231 242 / 0.11);
+  --c-glow: 168 214 240;
+}
+
+/* Ночной — глубокий синий подтон. */
+.theme-blue {
+  --c-bg: #06070d;
+  --c-bg-elev: #0a0d18;
+  --c-surface: #0e1220;
+  --c-surface-2: #151b2c;
+  --c-surface-3: #1e253a;
+  --c-border: #232b42;
+  --c-border-soft: #171d2e;
+  --c-border-strong: #333d59;
+  --c-accent: #cfd9f5;
+  --c-accent-hover: #eef2ff;
+  --c-accent-ink: #070a16;
+  --c-accent-soft: rgb(207 217 245 / 0.11);
+  --c-glow: 150 175 255;
+}
+
+/* Изумруд. */
+.theme-teal {
+  --c-bg: #05090a;
+  --c-bg-elev: #091211;
+  --c-surface: #0d1817;
+  --c-surface-2: #13211f;
+  --c-surface-3: #1b2d29;
+  --c-border: #1f3330;
+  --c-border-soft: #142221;
+  --c-border-strong: #2c4741;
+  --c-accent: #cfe9df;
+  --c-accent-hover: #edfff9;
+  --c-accent-ink: #04110f;
+  --c-accent-soft: rgb(207 233 223 / 0.11);
+  --c-glow: 140 226 202;
+}
+
+/* Гранат. */
+.theme-red {
+  --c-bg: #0a0708;
+  --c-bg-elev: #120c0e;
+  --c-surface: #181113;
+  --c-surface-2: #21171a;
+  --c-surface-3: #2d2024;
+  --c-border: #332327;
+  --c-border-soft: #221719;
+  --c-border-strong: #4a3238;
+  --c-accent: #f0d8dc;
+  --c-accent-hover: #fff2f4;
+  --c-accent-ink: #120709;
+  --c-accent-soft: rgb(240 216 220 / 0.11);
+  --c-glow: 244 160 172;
+}
+
+/* Графит — чистый нейтральный серый, без подтона. */
+.theme-gray {
+  --c-bg: #0a0a0a;
+  --c-bg-elev: #101010;
+  --c-surface: #161616;
+  --c-surface-2: #1e1e1e;
+  --c-surface-3: #282828;
+  --c-border: #2c2c2c;
+  --c-border-soft: #1d1d1d;
+  --c-border-strong: #3d3d3d;
+  --c-accent: #ededed;
+  --c-accent-hover: #ffffff;
+  --c-accent-ink: #0c0c0c;
+  --c-accent-soft: rgb(237 237 237 / 0.1);
+  --c-glow: 225 225 225;
+}
+
+/* ==========================================================================
+   Мост в Tailwind. Утилиты вида bg-surface / text-dim / rounded-md берут
+   значения отсюда, поэтому в разметке почти не нужны произвольные [var(--…)].
+   ========================================================================== */
+
+@theme inline {
+  --color-canvas: var(--c-bg);
+  --color-elev: var(--c-bg-elev);
+  --color-surface: var(--c-surface);
+  --color-surface-2: var(--c-surface-2);
+  --color-surface-3: var(--c-surface-3);
+
+  --color-line: var(--c-border);
+  --color-line-soft: var(--c-border-soft);
+  --color-line-strong: var(--c-border-strong);
+
+  --color-ink: var(--c-text);
+  --color-dim: var(--c-text-dim);
+  --color-faint: var(--c-text-faint);
+
+  --color-accent: var(--c-accent);
+  --color-accent-hover: var(--c-accent-hover);
+  --color-accent-ink: var(--c-accent-ink);
+  --color-accent-soft: var(--c-accent-soft);
+
+  --color-good: var(--c-good);
+  --color-warn: var(--c-warn);
+  --color-bad: var(--c-bad);
+
+  --radius-xs: var(--r-xs);
+  --radius-sm: var(--r-sm);
+  --radius-md: var(--r-md);
+  --radius-lg: var(--r-lg);
+  --radius-xl: var(--r-xl);
+  --radius-card: var(--r-md);
+
+  /* Отсюда Tailwind собирает утилиты shadow-1 … shadow-4. */
+  --shadow-1: var(--sh-1);
+  --shadow-2: var(--sh-2);
+  --shadow-3: var(--sh-3);
+  --shadow-4: var(--sh-4);
+
+  --font-display: 'Unbounded', 'Inter Tight', system-ui, sans-serif;
+  --font-sans:
+    'Inter Tight', 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+
+  --ease-out-quint: cubic-bezier(0.22, 1, 0.36, 1);
+  --ease-spring: cubic-bezier(0.34, 1.4, 0.64, 1);
+}
+
+/*
+  Шкала длительностей.
+
+  Раньше каждый компонент писал свои duration-300/500/700 — на глаз, и рядом
+  стоящие элементы разъезжались во времени: подпись догоняла постер, кнопка
+  опаздывала за оверлеем. Ступеней всего четыре, и у каждой своя работа:
+
+    fast   — отклик на нажатие: цвет фона, рамка. Дольше — интерфейс «вязнет».
+    mid    — появление и уход слоёв: оверлеи, панели, кнопки на карточке.
+    slow   — смена состояния крупного блока: обводка, тень, полоса прогресса.
+    slower — движение картинки: масштаб постера, кадры героя. Медленно нарочно,
+             иначе приближение постера читается как рывок.
+
+  Живут в :root, а не в @theme: в разметке используются как duration-[var(--t-x)],
+  и генерировать под них отдельные утилиты Tailwind незачем.
+*/
+:root {
+  --t-fast: 160ms;
+  --t-mid: 280ms;
+  --t-slow: 420ms;
+  --t-slower: 700ms;
+}
+
+/* ==========================================================================
+   База
+   ========================================================================== */
+
+html {
+  background: var(--c-bg);
+  color-scheme: dark;
+  /* Отключаем «резинку» по горизонтали: карусели со снапом её провоцируют. */
+  overscroll-behavior-x: none;
+}
+
+body {
+  background: var(--c-bg);
+  color: var(--c-text);
+  font-family: var(--font-sans);
+  -webkit-font-smoothing: antialiased;
+  text-rendering: optimizeLegibility;
+}
+
+h1,
+h2,
+h3,
+.font-display {
+  font-family: var(--font-display);
+  letter-spacing: -0.02em;
+}
+
+/* Крупные заголовки: display-гарнитура на больших кеглях требует минусового
+   трекинга, иначе выглядит разболтанной. */
+.display-xl {
+  font-family: var(--font-display);
+  font-weight: 700;
+  letter-spacing: -0.045em;
+  line-height: 0.93;
+}
+
+.display-lg {
+  font-family: var(--font-display);
+  font-weight: 600;
+  letter-spacing: -0.035em;
+  line-height: 1;
+}
+
+/* Надзаголовок: разряженные капсы. Здесь трекинг наоборот положительный. */
+.eyebrow {
+  font-family: var(--font-sans);
+  font-size: 0.6875rem;
+  font-weight: 600;
+  letter-spacing: 0.16em;
+  text-transform: uppercase;
+  color: var(--c-text-faint);
+}
+
+.tnum {
+  font-variant-numeric: tabular-nums;
+}
+
+::selection {
+  background: var(--c-accent);
+  color: var(--c-accent-ink);
+}
+
+/* Переходы включаем только после гидрации, иначе моргает на первой отрисовке. */
+.theme-ready * {
+  transition:
+    background-color var(--t-fast) ease,
+    border-color var(--t-fast) ease,
+    color var(--t-fast) ease;
+}
+
+/* ==========================================================================
+   Графические примитивы. Того, что ниже, в проекте не было вообще — именно это
+   отличает «тёмный шаблон» от оформленного интерфейса.
+   ========================================================================== */
+
+/*
+  Зерно плёнки. Один прибитый к вьюпорту слой на всё приложение: дешевле, чем
+  текстура на каждом блоке, и не ломает stacking context карточек.
+*/
+.grain::after {
+  content: '';
+  position: fixed;
+  inset: -50%;
+  z-index: 60;
+  pointer-events: none;
+  opacity: 0.032;
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='160' height='160'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.85' numOctaves='3' stitchTiles='stitch'/%3E%3CfeColorMatrix type='saturate' values='0'/%3E%3C/filter%3E%3Crect width='160' height='160' filter='url(%23n)'/%3E%3C/svg%3E");
+  will-change: transform;
+  animation: grain-shift 6s steps(5, end) infinite;
+}
+
+@keyframes grain-shift {
+  0%,
+  100% {
+    transform: translate(0, 0);
+  }
+  20% {
+    transform: translate(-1.5%, 1%);
+  }
+  40% {
+    transform: translate(1%, -1.5%);
+  }
+  60% {
+    transform: translate(-1%, -1%);
+  }
+  80% {
+    transform: translate(1.5%, 1.5%);
+  }
+}
+
+/*
+  Полярное свечение за секциями. Два радиальных пятна цвета свечения темы.
+  Всегда pointer-events:none — это фон, а не элемент.
+*/
+.aurora {
+  position: absolute;
+  inset: 0;
+  z-index: 0;
+  pointer-events: none;
+  overflow: hidden;
+}
+
+.aurora::before,
+.aurora::after {
+  content: '';
+  position: absolute;
+  width: 60vw;
+  height: 60vw;
+  max-width: 900px;
+  max-height: 900px;
+  border-radius: 50%;
+  filter: blur(90px);
+}
+
+.aurora::before {
+  top: -30%;
+  left: -10%;
+  background: radial-gradient(circle, rgb(var(--c-glow) / 0.1) 0%, transparent 68%);
+}
+
+.aurora::after {
+  bottom: -35%;
+  right: -12%;
+  background: radial-gradient(circle, rgb(var(--c-glow) / 0.07) 0%, transparent 68%);
+}
+
+/* Волосяная линия сверху — имитация света, легшего на верхнюю кромку панели. */
+.hairline {
+  box-shadow: inset 0 1px 0 rgb(255 255 255 / 0.06);
+}
+
+/* Стеклянная панель: размытие + кромка. Для рельса, шапок и поповеров. */
+.glass {
+  background: color-mix(in oklab, var(--c-bg) 72%, transparent);
+  backdrop-filter: blur(20px) saturate(1.4);
+}
+
+/*
+  Маски затухания у краёв карусели: показывают, что ряд продолжается.
+
+  Фейд обязан закончиться ДО начала контента. Если довести его ровно до
+  var(--gutter) — то есть до левого края первой карточки, — первая буква подписи
+  попадает в зону полупрозрачности и выглядит обрезанной. Поэтому 0.7 отступа:
+  затухание живёт целиком внутри поля, карточки его не касаются.
+*/
+.mask-fade-x {
+  mask-image: linear-gradient(
+    to right,
+    transparent 0,
+    #000 calc(var(--gutter) * 0.7),
+    #000 calc(100% - var(--gutter) * 0.7),
+    transparent 100%
+  );
+}
+
+/*
+  Отклик на наведение.
+
+  Раньше здесь был подъём: transform: translateY(-6px). Он ломался в
+  горизонтальных рядах — контейнер с overflow-x: auto обрезает содержимое по
+  ОБЕИМ осям, поэтому приподнятая карточка срезалась по верхнему краю вместе с
+  обводкой и тенью.
+
+  Поэтому карточка больше никуда не двигается. Ощущение отклика даёт постер: он
+  приближается внутри своей рамки, а рамка стоит на месте. Двигать то, что
+  находится внутри overflow: hidden, безопасно по определению — за границы
+  карточки это физически не выйдет.
+*/
+.lift {
+  transition:
+    box-shadow var(--t-slow) var(--ease-out-quint),
+    filter var(--t-slow) var(--ease-out-quint);
+}
+
+.lift:hover {
+  filter: brightness(1.06);
+}
+
+/*
+  Сетка постеров.
+
+  Явное число колонок вместо auto-fill: с auto-fill на промежуточных ширинах
+  выпадает то три, то четыре колонки с рваными полями, а на планшете постеры
+  раздувались до неприличного размера. Здесь каждая ступень выбрана так, чтобы
+  постер оставался читаемым, но экран был заполнен.
+*/
+.poster-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 1.25rem 0.75rem;
+}
+
+@media (min-width: 420px) {
+  .poster-grid {
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+  }
+}
+
+@media (min-width: 640px) {
+  .poster-grid {
+    grid-template-columns: repeat(4, minmax(0, 1fr));
+    gap: 1.5rem 1rem;
+  }
+}
+
+@media (min-width: 900px) {
+  .poster-grid {
+    grid-template-columns: repeat(5, minmax(0, 1fr));
+  }
+}
+
+@media (min-width: 1200px) {
+  .poster-grid {
+    grid-template-columns: repeat(6, minmax(0, 1fr));
+    gap: 1.75rem 1.25rem;
+  }
+}
+
+@media (min-width: 1560px) {
+  .poster-grid {
+    grid-template-columns: repeat(7, minmax(0, 1fr));
+  }
+}
+
+/* На ТВ колонок наоборот меньше: карточка должна читаться с дивана. */
+@media (min-width: 1920px) {
+  .poster-grid {
+    grid-template-columns: repeat(6, minmax(0, 1fr));
+    gap: 2.5rem 1.75rem;
+  }
+}
+
+/*
+  Горизонтальный ряд со снапом. Снап именно на карточку, а не на контейнер —
+  иначе на мобильном ряд останавливается «между» постерами.
+
+  scroll-padding-inline обязателен. Без него снап-порт начинается от border-box,
+  браузер подтягивает первую карточку к самому краю контейнера и съедает
+  собственный padding ряда: карточка уезжает влево на величину поля и попадает
+  под маску затухания. Выглядит как обрезанная подпись у первого постера.
+*/
+.snap-row {
+  display: flex;
+  overflow-x: auto;
+  scroll-snap-type: x proximity;
+  scroll-padding-inline: var(--gutter);
+  scroll-behavior: smooth;
+  scrollbar-width: none;
+  -ms-overflow-style: none;
+  /* Запас по вертикали: тень и свечение при наведении рисуются за пределами
+     карточки, и без запаса контейнер прокрутки их срежет. */
+  padding-block: 0.5rem;
+}
+
+.snap-row::-webkit-scrollbar {
+  display: none;
+}
+
+.snap-row > * {
+  scroll-snap-align: start;
+  flex-shrink: 0;
+}
+
+.no-scrollbar {
+  scrollbar-width: none;
+  -ms-overflow-style: none;
+}
+
+.no-scrollbar::-webkit-scrollbar {
+  display: none;
+}
+
+/*
+  Ползунок диапазона.
+
+  Раньше на них стоял accent-color, и браузер рисовал системный контрол: серый
+  трек, толстый кружок, чужие пропорции. В монохромном интерфейсе это была
+  единственная деталь, выдающая «стандартную форму». Здесь трек, заполнение и
+  кружок собраны из токенов сайта.
+
+  Заполнение слева от кружка нельзя выразить одним свойством, поэтому его рисует
+  градиент фона, а позицию задаёт переменная --fill, которую ставит компонент.
+*/
+.range {
+  -webkit-appearance: none;
+  appearance: none;
+  width: 100%;
+  height: 1.5rem;
+  background: transparent;
+  cursor: pointer;
+}
+
+.range::-webkit-slider-runnable-track {
+  height: 3px;
+  border-radius: 999px;
+  background: linear-gradient(
+    to right,
+    var(--c-accent) 0,
+    var(--c-accent) var(--fill, 0%),
+    var(--c-border) var(--fill, 0%),
+    var(--c-border) 100%
+  );
+}
+
+.range::-moz-range-track {
+  height: 3px;
+  border-radius: 999px;
+  background: var(--c-border);
+}
+
+.range::-moz-range-progress {
+  height: 3px;
+  border-radius: 999px;
+  background: var(--c-accent);
+}
+
+.range::-webkit-slider-thumb {
+  -webkit-appearance: none;
+  appearance: none;
+  width: 14px;
+  height: 14px;
+  margin-top: -5.5px;
+  border-radius: 50%;
+  border: none;
+  background: var(--c-accent);
+  box-shadow: var(--glow-sm);
+  transition: transform 0.15s var(--ease-out-quint);
+}
+
+.range::-moz-range-thumb {
+  width: 14px;
+  height: 14px;
+  border-radius: 50%;
+  border: none;
+  background: var(--c-accent);
+  box-shadow: var(--glow-sm);
+}
+
+.range:hover::-webkit-slider-thumb,
+.range:focus-visible::-webkit-slider-thumb {
+  transform: scale(1.25);
+}
+
+/* На ТВ кружок должен быть виден с дивана и попадаться пультом. */
+@media (min-width: 1920px) {
+  .range::-webkit-slider-thumb {
+    width: 20px;
+    height: 20px;
+    margin-top: -8.5px;
+  }
+  .range::-moz-range-thumb {
+    width: 20px;
+    height: 20px;
+  }
+}
+
+/* Скелетон загрузки. Блик уезжает вправо раз в 1.6с. */
+.skeleton {
+  position: relative;
+  overflow: hidden;
+  background: var(--c-surface);
+}
+
+.skeleton::after {
+  content: '';
+  position: absolute;
+  inset: 0;
+  background: linear-gradient(90deg, transparent, rgb(255 255 255 / 0.045), transparent);
+  transform: translateX(-100%);
+  animation: skeleton-sweep 1.6s ease-in-out infinite;
+}
+
+@keyframes skeleton-sweep {
+  100% {
+    transform: translateX(100%);
+  }
+}
+
+/*
+  Герой главной.
+
+  Наезд на кадр: 12 секунд при слайде в 9 — движение не должно успевать
+  доехать до конца, иначе в последнюю секунду картинка замирает и это заметно.
+  Масштаб начинается с 1.04, а не с 1: у кадров TMDB нижний край часто
+  обрезан по-разному, и небольшой запас прячет стык.
+
+  Анимация перезапускается сама, потому что класс снимается с неактивного
+  слайда: анимация без имени перестаёт существовать, и при возврате класса
+  начинается заново.
+*/
+@keyframes hero-zoom {
+  from {
+    transform: scale(1.04);
+  }
+  to {
+    transform: scale(1.13);
+  }
+}
+
+.hero-zoom {
+  animation: hero-zoom 12s linear both;
+}
+
+/* Появление текстовой колонки на новом слайде. */
+@keyframes hero-in {
+  from {
+    opacity: 0;
+    transform: translateY(10px);
+  }
+  to {
+    opacity: 1;
+    transform: none;
+  }
+}
+
+.hero-in {
+  animation: hero-in var(--t-slower) var(--ease-out-quint) both;
+}
+
+/* Полоса автолистания на активной миниатюре. */
+@keyframes hero-progress {
+  from {
+    width: 0%;
+  }
+  to {
+    width: 100%;
+  }
+}
+
+.hero-progress {
+  animation-name: hero-progress;
+  animation-timing-function: linear;
+  animation-fill-mode: both;
+}
+
+/*
+  Разворачивание описания из обложки.
+
+  Одна анимация вместо трёх «выездов по сторонам»: панель не выезжает откуда-то,
+  а увеличивается из точки, где лежал постер. Точку задаёт transform-origin,
+  который компонент вычисляет как центр обложки в координатах панели, — поэтому
+  рост начинается ровно оттуда, где была картинка.
+
+  Начальный масштаб 0.62 примерно равен отношению обложки к панели: на первом
+  кадре панель совпадает с постером по размеру, дальше растёт. Прозрачность
+  добавляется быстрее масштаба, иначе первые кадры выглядят как мутное пятно.
+*/
+@keyframes preview-grow {
+  from {
+    opacity: 0;
+    transform: scale(0.62);
+  }
+  40% {
+    opacity: 1;
+  }
+  to {
+    opacity: 1;
+    transform: none;
+  }
+}
+
+.preview-grow {
+  animation: preview-grow var(--t-mid) var(--ease-out-quint) both;
+  /* Слой композитора на время анимации: масштабирование крупного блока с тенью
+     иначе перерисовывается процессором и заметно дёргается. */
+  will-change: transform, opacity;
+}
+
+/*
+  Появление блока при прокрутке. Классы навешивает действие use:reveal
+  (src/lib/reveal.ts) через IntersectionObserver.
+
+  Смещение маленькое — 14px. Модные «выезды» на 40–60px превращают прокрутку
+  длинной главной в аттракцион: пока ряд доедет, палец уже ушёл дальше. Здесь
+  задача скромнее — обозначить, что блок новый, и не мешать.
+
+  will-change не ставим: на главной таких блоков десяток, и постоянный слой
+  композитора под каждым дороже самой анимации.
+*/
+.reveal {
+  opacity: 0;
+  transform: translateY(14px);
+}
+
+.reveal-in {
+  opacity: 1;
+  transform: none;
+  transition:
+    opacity var(--t-slower) var(--ease-out-quint),
+    transform var(--t-slower) var(--ease-out-quint);
+  /* Задержку для лестницы внутри блока задаёт действие. */
+  transition-delay: var(--reveal-delay, 0ms);
+}
+
+/* Тонкая полоса прокрутки в цвет темы. */
+@media (pointer: fine) {
+  * {
+    scrollbar-width: thin;
+    scrollbar-color: var(--c-border-strong) transparent;
+  }
+}
+
+/*
+  Фокус только с клавиатуры. На ТВ это не «доступность на всякий случай», а
+  единственный способ понять, где ты находишься: мыши нет, наведения нет.
+*/
+:focus-visible {
+  outline: 2px solid var(--c-accent);
+  outline-offset: 3px;
+  border-radius: var(--r-xs);
+}
+
+@media (min-width: 1920px) {
+  :focus-visible {
+    outline-width: 4px;
+    outline-offset: 5px;
+    box-shadow: var(--glow-md);
+  }
+}
+
+/*
+  Карточка, на которую перешёл фокус, должна доехать до края целиком, а не
+  прижаться половиной к маске затухания. Отступ равен полю ряда.
+*/
+.snap-row > *,
+.poster-grid > * {
+  scroll-margin-inline: var(--gutter);
+  scroll-margin-block: 6rem;
+}
+
+:focus:not(:focus-visible) {
+  outline: none;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  /*
+    Обнуляем сами токены, а не только правила ниже: компоненты берут
+    длительность отсюда, поэтому одного этого блока хватает, чтобы погасить
+    всё, что появится в проекте потом.
+  */
+  :root {
+    --t-fast: 1ms;
+    --t-mid: 1ms;
+    --t-slow: 1ms;
+    --t-slower: 1ms;
+  }
+
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+  }
+
+  .lift:hover {
+    filter: none;
+  }
+
+  .reveal {
+    opacity: 1;
+    transform: none;
+  }
+
+  /* Наезд на кадр — самое заметное движение на сайте, его убираем целиком. */
+  .hero-zoom,
+  .hero-in,
+  .preview-grow {
+    animation: none;
+  }
+}

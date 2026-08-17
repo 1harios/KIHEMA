@@ -1,0 +1,1169 @@
+{
+	"builtAt": "2026-08-16T11:37:09.299Z",
+	"films": [
+		{
+			"tmdbId": 53415,
+			"title": "Пародия на Кармен",
+			"year": 1915,
+			"identifier": "CC_1915_12_18_ABurlesqueOnCarmen",
+			"file": "CC_1915_12_18_ABurlesqueOnCarmen_512kb.mp4",
+			"durationSec": 2622,
+			"sizeMb": 181,
+			"poster": "https://image.tmdb.org/t/p/w342/n06Np1hV4TtOWvckoKt3PRwZIDB.jpg",
+			"backdrop": "https://image.tmdb.org/t/p/w1280/ojPFrWXE5KacxgoEdEr9b0jQSWk.jpg",
+			"overview": "Группа контрабандистов прибывает морем на шлюпке, надеясь незаметно переправить свои товары через городские стены города. Для этой цели они хотели воспользоваться проломом в стене, который охраняет офицер Дарн Хосьери, однако попытка с ним договориться не увенчалась успехом, после чего они вынуждены были переправить тюки с контрабандой в свой лагерь в горах. Их подруга Кармен, узнав про препятстви",
+			"rating": 5.8,
+			"genres": [
+				"комедия"
+			]
+		},
+		{
+			"tmdbId": 30266,
+			"title": "20000 лье под водой",
+			"year": 1916,
+			"identifier": "20000LeaguesUndertheSea",
+			"file": "20000_Leagues_Under_the_Sea_512kb.mp4",
+			"durationSec": 5922,
+			"sizeMb": 410,
+			"poster": "https://image.tmdb.org/t/p/w342/edY5eDCC08OUKjS0k7zWUxYM9BB.jpg",
+			"backdrop": "https://image.tmdb.org/t/p/w1280/hneezj5OLYwjtZ3Efj3j4nCgiEG.jpg",
+			"overview": "Капитан Немо пытается отомстить Чарлзу Денверу, из-за которого погибла его жена. Для этого он строит гигантскую подводную лодку «Наутилус». Денвер прячет дочь капитана на отдаленном острове, куда заносит ураганом воздушный шар с пятью американцами. В это время «Наутилус» нападает на корабль, на котором плывет профессор Аронакс; профессор и его спутники оказываются на борту «Наутилуса» — сначала ка",
+			"rating": 6.1,
+			"genres": [
+				"приключения",
+				"драма",
+				"боевик"
+			]
+		},
+		{
+			"tmdbId": 3059,
+			"title": "Нетерпимость",
+			"year": 1916,
+			"identifier": "Intolerance",
+			"file": "Intolerance_512kb.mp4",
+			"durationSec": 10587,
+			"sizeMb": 649,
+			"poster": "https://image.tmdb.org/t/p/w342/lJCabs4TMOsKfnl0BmA5Hf16Ezb.jpg",
+			"backdrop": "https://image.tmdb.org/t/p/w1280/5s5Vau1tCvoQaaTTTGk4Qux8CcH.jpg",
+			"overview": "Фильм «Нетерпимость» — один из этапных в развитии мирового киноискусства; — это сложная сюжетная конструкция из четырех перемежающихся новелл, показывавших четыре различные эпохи. В ленте, снятой с грандиозным постановочным размахом, был затронут широкий круг философских и моральных проблем.  Нетерпимость трактована как зло, отравляющее жизнь во все времена и у всех народов. Обратившись к огромном",
+			"rating": 7.1,
+			"genres": [
+				"драма",
+				"история"
+			]
+		},
+		{
+			"tmdbId": 42657,
+			"title": "Знак Зорро",
+			"year": 1920,
+			"identifier": "markofzorro-1920",
+			"file": "markofzorro_512kb.mp4",
+			"durationSec": 4458,
+			"sizeMb": 309,
+			"poster": "https://image.tmdb.org/t/p/w342/1N1gSSJs9ULgSWUM0W7zCXSR2QK.jpg",
+			"backdrop": "https://image.tmdb.org/t/p/w1280/oNEY4mX0C9bO1KaVWYf9kTsq9oS.jpg",
+			"overview": "При свете дня его величают доном Диего, но как только опускается южная ночь, Зорро преображается в борца со злом и по заслугам воздает всем окрестным негодяям, не взирая на ранги и титулы.",
+			"rating": 7.2,
+			"genres": [
+				"вестерн",
+				"приключения",
+				"драма"
+			]
+		},
+		{
+			"tmdbId": 653,
+			"title": "Носферату, симфония ужаса",
+			"year": 1922,
+			"identifier": "Nosferatu_most_complete_version_93_mins.",
+			"file": "Nosferatu_1922_Symphony_of_Horror_512kb.mp4",
+			"durationSec": 5602,
+			"sizeMb": 377,
+			"poster": "https://image.tmdb.org/t/p/w342/l09zj7ZRarReFShmFubgXcxRscl.jpg",
+			"backdrop": "https://image.tmdb.org/t/p/w1280/cA9iGtvjRGJHzDBfrq48l0eyCvA.jpg",
+			"overview": "1838 год. Молодой служащий Хуттер отправляется из Германии в карпатские леса в замок зловещего графа Орлока, решившего перебраться в город. Хуттер выясняет, что Орлок — вампир, и от его заражающего укуса парня спасает лишь супруга Эллен.",
+			"rating": 7.7,
+			"genres": [
+				"ужасы",
+				"фэнтези"
+			]
+		},
+		{
+			"tmdbId": 57283,
+			"title": "Ведьмы",
+			"year": 1922,
+			"identifier": "Haxan_tinted_and_subtitled",
+			"file": "Haxan_512kb.mp4",
+			"durationSec": 6293,
+			"sizeMb": 436,
+			"poster": "https://image.tmdb.org/t/p/w342/mmHKSe7JaVqVKpQDlp2dRassXs7.jpg",
+			"backdrop": "https://image.tmdb.org/t/p/w1280/gZwQip2KQRDNZZOEDe0Yi25tW9Z.jpg",
+			"overview": "Фильм состоит из 7 частей. Некоторые из них являются чисто документальными, некоторые чисто игровыми, некоторые сочетают элементы обоих жанров. Издревле люди пытались объяснить непонятные им явления вмешательством злых и добрых высших сил, так появилась вера людей в бога и дьявола. В Средние века массовое помешательство на охоте на ведьм достигло апогея – быть старой и страшной или молодой и краси",
+			"rating": 7.6,
+			"genres": [
+				"документальный",
+				"ужасы",
+				"история"
+			]
+		},
+		{
+			"tmdbId": 964,
+			"title": "Призрак оперы",
+			"year": 1925,
+			"identifier": "ThePhantomoftheOpera",
+			"file": "Phantom_of_the_Opera_512kb.mp4",
+			"durationSec": 6389,
+			"sizeMb": 442,
+			"poster": "https://image.tmdb.org/t/p/w342/mvaYpAYj957C2tlq3vVJPSzGJXK.jpg",
+			"backdrop": "https://image.tmdb.org/t/p/w1280/6FSs7jMimg1PBYdhZtPNQhtKtEc.jpg",
+			"overview": "Голос тайного ангела пел песни Кристине. Только она не знала, что ее тайный ангел — всего лишь Призрак — гений, который жил в подвале театра и наводил ужас на всех артистов, которые там работали.",
+			"rating": 7.1,
+			"genres": [
+				"ужасы"
+			]
+		},
+		{
+			"tmdbId": 2981,
+			"title": "Затерянный мир",
+			"year": 1925,
+			"identifier": "lost_world",
+			"file": "lost_world_512kb.mp4",
+			"durationSec": 4085,
+			"sizeMb": 283,
+			"poster": "https://image.tmdb.org/t/p/w342/411VnWtYJdEFKiaGqJOeTmBv8th.jpg",
+			"backdrop": "https://image.tmdb.org/t/p/w1280/mdNae6nOlJ7iKxFgsWSAgxU9shS.jpg",
+			"overview": "Первая адаптация классического романа Сэра Артура Конан Дойла, повествующего о крае, в котором до сих пор обитают древние существа.",
+			"rating": 6.7,
+			"genres": [
+				"приключения",
+				"фэнтези",
+				"драма"
+			]
+		},
+		{
+			"tmdbId": 643,
+			"title": "Броненосец Потёмкин",
+			"year": 1925,
+			"identifier": "BattleshipPotemkin",
+			"file": "Battleship_Potemkin_512kb.mp4",
+			"durationSec": 4381,
+			"sizeMb": 303,
+			"poster": "https://image.tmdb.org/t/p/w342/Z3h35leCMVI66obDgQvrqYfjP3.jpg",
+			"backdrop": "https://image.tmdb.org/t/p/w1280/3RH61Z7BP3f215936PJBEG2qQrT.jpg",
+			"overview": "Немой художественный фильм, снятый режиссёром Сергеем Эйзенштейном на киностудии «Мосфильм» в 1925 году. Неоднократно в разные годы признавался лучшим или одним из лучших фильмов всех времён и народов по итогам опросов критиков, кинорежиссёров и публики. Сценарий, по которому снимался фильм, основан на реальных событиях, произошедших в июне 1905 года, когда на броненосце «Князь Потёмкин-Таврически",
+			"rating": 7.6,
+			"genres": [
+				"драма",
+				"история",
+				"военный"
+			]
+		},
+		{
+			"tmdbId": 130816,
+			"title": "Abraham Lincoln",
+			"year": 1930,
+			"identifier": "abraham_lincoln",
+			"file": "abraham_lincoln_512kb.mp4",
+			"durationSec": 5080,
+			"sizeMb": 352,
+			"poster": "https://image.tmdb.org/t/p/w342/4BOmqevJBC5gBfQNXpa2epf27yO.jpg",
+			"backdrop": "https://image.tmdb.org/t/p/w1280/uhPHNGd4PHMoXnhda2s0zm2ddDy.jpg",
+			"overview": null,
+			"rating": 5.5,
+			"genres": [
+				"история",
+				"драма"
+			]
+		},
+		{
+			"tmdbId": 22649,
+			"title": "Прощай, оружие",
+			"year": 1932,
+			"identifier": "farewell_to_arms_ipod",
+			"file": "farewell_to_arms.mp4",
+			"durationSec": 4703,
+			"sizeMb": 392,
+			"poster": "https://image.tmdb.org/t/p/w342/eNmPByGZJqlp60nCZRhsAlVAb3F.jpg",
+			"backdrop": "https://image.tmdb.org/t/p/w1280/ek1883HwUWzFliDaE6FAmJ8XoXi.jpg",
+			"overview": "Первая мировая война. Австро-итальянский фронт. Американец Фредерик Генри добровольно вступает в ряды итальянской армии. Среди бесчеловечного хаоса боевых действий он встречает англичанку-медсестру Кэтрин Баркли, но война накладывает тяжелый, неизгладимый отпечаток на их любовь…",
+			"rating": 6.2,
+			"genres": [
+				"драма",
+				"мелодрама",
+				"военный"
+			]
+		},
+		{
+			"tmdbId": 26860,
+			"title": "Белый зомби",
+			"year": 1932,
+			"identifier": "white_zombie",
+			"file": "white_zombie_512kb.mp4",
+			"durationSec": 3920,
+			"sizeMb": 272,
+			"poster": "https://image.tmdb.org/t/p/w342/s5DnfWHGeCExlweIFF4JOHKyx3H.jpg",
+			"backdrop": "https://image.tmdb.org/t/p/w1280/9tcIzvTfIYkoxjLiTcaXdMwfzT6.jpg",
+			"overview": "Молодые влюбленные Нил и Мадлен отправляются в романтическое путешествие на Гаити. В пути на корабле герои знакомятся с весьма изысканным и учтивым господином, месье Бомоном. По прибытии на остров влюбленные решают остановиться у него. Бомон влюбляется в Мадлен и делает все, чтобы добиться взаимности. Когда девушка в очередной раз жестко отвергает ухаживания, он решается на крайний шаг и обращаетс",
+			"rating": 6.0,
+			"genres": [
+				"ужасы"
+			]
+		},
+		{
+			"tmdbId": 1994,
+			"title": "Самая опасная игра",
+			"year": 1932,
+			"identifier": "TheMostDangerousGame",
+			"file": "TheMostDangerousGame_512kb.mp4",
+			"durationSec": 3754,
+			"sizeMb": 260,
+			"poster": "https://image.tmdb.org/t/p/w342/3aNlOIFlGOnIzxqvAWpgm5Sly1H.jpg",
+			"backdrop": "https://image.tmdb.org/t/p/w1280/psBFJubFWiAV23dAZ6D0wjQWbhe.jpg",
+			"overview": "После кораблекрушения трём пассажирам удаётся доплыть до ближайшего островка. Выясняется, что хозяином этих мест является русский граф Заров, главная страсть в жизни которого — охота, причём охотиться Заров предпочитает на людей…",
+			"rating": 6.9,
+			"genres": [
+				"триллер",
+				"приключения",
+				"ужасы"
+			]
+		},
+		{
+			"tmdbId": 28046,
+			"title": "Гуль",
+			"year": 1933,
+			"identifier": "TheGhoul",
+			"file": "TheGhoul_1933_512kb.mp4",
+			"durationSec": 4127,
+			"sizeMb": 286,
+			"poster": "https://image.tmdb.org/t/p/w342/dmMBlNiGLQJRVNGgy8SRnscidUn.jpg",
+			"backdrop": "https://image.tmdb.org/t/p/w1280/vXovDO9DfrSkpx9mB9NQYvMquhw.jpg",
+			"overview": "Профессор Морлант, британский египтолог, желает обрести бессмертие, используя силу драгоценного камня, найденного в древней восточной гробнице. После смерти Морлант возвращается в мир живых, чтобы отомстить тем, кто украл драгоценный камень из его склепа.",
+			"rating": 5.6,
+			"genres": [
+				"ужасы",
+				"детектив"
+			]
+		},
+		{
+			"tmdbId": 23590,
+			"title": "Sagebrush Trail",
+			"year": 1933,
+			"identifier": "SagebrushTrail",
+			"file": "SagebrushTrail_512kb.mp4",
+			"durationSec": 3208,
+			"sizeMb": 222,
+			"poster": "https://image.tmdb.org/t/p/w342/pCJlvS7o6wJ6Xn8qZ5GkVJWpRMc.jpg",
+			"backdrop": "https://image.tmdb.org/t/p/w1280/3lSWJv9CW8FWC4XL1LHgdlrcjqM.jpg",
+			"overview": null,
+			"rating": 5.3,
+			"genres": [
+				"вестерн"
+			]
+		},
+		{
+			"tmdbId": 41118,
+			"title": "Scrooge",
+			"year": 1935,
+			"identifier": "Scrooge_1935",
+			"file": "Scrooge_1935_512kb.mp4",
+			"durationSec": 4655,
+			"sizeMb": 323,
+			"poster": "https://image.tmdb.org/t/p/w342/vqRuJyux0KEr4vojK9ytXIrEU46.jpg",
+			"backdrop": "https://image.tmdb.org/t/p/w1280/sF29zOqXnWUZ0I9mE5CXJpdt8oO.jpg",
+			"overview": null,
+			"rating": 6.1,
+			"genres": [
+				"драма",
+				"фэнтези",
+				"ужасы"
+			]
+		},
+		{
+			"tmdbId": 2761,
+			"title": "Секретный агент",
+			"year": 1936,
+			"identifier": "Hitchcock_Secret_Agent",
+			"file": "Secret_Agent.mp4",
+			"durationSec": 5155,
+			"sizeMb": 1017,
+			"poster": "https://image.tmdb.org/t/p/w342/5o74KLqz3AX5h1NBTQhzARX0kLT.jpg",
+			"backdrop": "https://image.tmdb.org/t/p/w1280/nfsTvfanGeIicFPKsYSAO7rpNqV.jpg",
+			"overview": "Действие происходит во время Первой мировой войны. Британский агент Эдгар Броди послан правительством в Швейцарию для ликвидации немецкого агента. В сопровождении Эльзы Кэррингтон, под видом его жены, и мексиканца — киллера они останавливаются в отеле.  В результате ошибки был убит не тот человек, а немецкий агент остался невредимым. В руке у убитого осталась оторванная пуговица, которая и послужи",
+			"rating": 6.1,
+			"genres": [
+				"триллер",
+				"детектив",
+				"мелодрама"
+			]
+		},
+		{
+			"tmdbId": 2762,
+			"title": "Молодой и невинный",
+			"year": 1937,
+			"identifier": "YoungandInnocentTheGirlWasYoung",
+			"file": "Young_and_Innocent_512kb.mp4",
+			"durationSec": 4925,
+			"sizeMb": 341,
+			"poster": "https://image.tmdb.org/t/p/w342/1D4M3mxbvWzmvB8MXXkYJyZwYoQ.jpg",
+			"backdrop": "https://image.tmdb.org/t/p/w1280/mi0PhGBqRnJXuVqoAjFYIN89kWR.jpg",
+			"overview": "Роберт Тисдолл становится главным подозреваемым по делу об убийстве актрисы. Все улики складываются не в его пользу — девушка задушена поясом от его плаща. Дело ведет полицейский полковник Бергойн, уверенный в виновности Роберта.  Но дочь полицейского, очаровательная Эрика, считает, что расследование пошло по ложному пути, и у молодых людей завязывается романтическое чувство…",
+			"rating": 6.6,
+			"genres": [
+				"триллер",
+				"мелодрама",
+				"детектив"
+			]
+		},
+		{
+			"tmdbId": 37833,
+			"title": "Мозги прокуренные",
+			"year": 1938,
+			"identifier": "reefer_madness1938",
+			"file": "reefer_madness1938_512kb.mp4",
+			"durationSec": 4098,
+			"sizeMb": 284,
+			"poster": "https://image.tmdb.org/t/p/w342/pLEy5EpJ09ilda44HDxkrGOQsKl.jpg",
+			"backdrop": "https://image.tmdb.org/t/p/w1280/deor9xEiYQIjmNfipzBhwQ6yfgh.jpg",
+			"overview": "В неком американском городке существует преступная организация торгующая наркотиками. Молодые люди, связанные с этой организацией, устроили в своей квартире притон и развивают свой прибыльный бизнес. Причем продают наркотики как взрослым, отвечающим за свои поступки людям, так и тинэйджерам. В общем, все кто был связан с этой квартирой, либо умирает, либо попадает в тюрьму, либо сходит с ума.",
+			"rating": 4.4,
+			"genres": [
+				"драма"
+			]
+		},
+		{
+			"tmdbId": 42518,
+			"title": "Путешествия Гулливера",
+			"year": 1939,
+			"identifier": "gullivers_travels1939",
+			"file": "gullivers_travels1939_512kb.mp4",
+			"durationSec": 4360,
+			"sizeMb": 302,
+			"poster": "https://image.tmdb.org/t/p/w342/sC49F6PP52tyYr9Ohf0BI04E5T5.jpg",
+			"backdrop": "https://image.tmdb.org/t/p/w1280/pwP9RTomD5Ft6fQYLmkUTUlKTgv.jpg",
+			"overview": "По мотивам бессмертной повести Джонатана Свифта. После кораблекрушения молодой Гулливер оказался на неизвестном острове в плену у жителей страны Лилипутия. Само название страны говорит о том, как выглядят ее обитатели. Вначале жители Лилипутии встречают Гулливера вполне приветливо. И вот он узнает, что Лилипутия находится в состоянии войны с соседним островом Блефуску. Однако после того как он исп",
+			"rating": 6.2,
+			"genres": [
+				"мультфильм",
+				"семейный",
+				"боевик"
+			]
+		},
+		{
+			"tmdbId": 22999,
+			"title": "Летающая парочка",
+			"year": 1939,
+			"identifier": "TheFlyingDeuces",
+			"file": "The_Flying_Deuces_512kb.mp4",
+			"durationSec": 4078,
+			"sizeMb": 282,
+			"poster": "https://image.tmdb.org/t/p/w342/wXXA3s9tzRV7tgiFqhm7Nvu9W8B.jpg",
+			"backdrop": "https://image.tmdb.org/t/p/w1280/y3FJ80lgiOyD9D1Q141qypVRtxC.jpg",
+			"overview": "Стэн Лорел и Оливер Харди. Это мастера фарсовой клоунады, создавшие маски двух обаятельных чудаков: тщедушного плаксы Лорела и толстяка-бонвивана Харди.",
+			"rating": 6.4,
+			"genres": [
+				"комедия",
+				"военный"
+			]
+		},
+		{
+			"tmdbId": 26531,
+			"title": "Маленькая принцесса",
+			"year": 1939,
+			"identifier": "little_princess",
+			"file": "little_princess_512kb.mp4",
+			"durationSec": 5566,
+			"sizeMb": 386,
+			"poster": "https://image.tmdb.org/t/p/w342/cnMSURyv7R6gjmUm5SYdTxXLzIO.jpg",
+			"backdrop": "https://image.tmdb.org/t/p/w1280/hH4a4d2xzHmEhaWFX9kqTVuAlR7.jpg",
+			"overview": "Лондон. Конец XIX века. Капитан Кру, отправляясь на войну, привозит свою любимую дочь Сару, которую он называет «маленькой принцессой», в один из лучших и самых дорогих пансионов, чтобы она получила хорошее образование. Добрая, отзывчивая Сара быстро находит новых подруг.  Ее самостоятельность и уважительное отношение к людям покоряют всех. Однажды приходит страшная весть — отец Сары погибает, не ",
+			"rating": 6.7,
+			"genres": [
+				"семейный",
+				"драма",
+				"комедия"
+			]
+		},
+		{
+			"tmdbId": 26378,
+			"title": "They Made Me a Criminal",
+			"year": 1939,
+			"identifier": "They_Made_Me_A_Criminal_1939",
+			"file": "they_made_me_a_criminal_1939_512kb.mp4",
+			"durationSec": 5473,
+			"sizeMb": 379,
+			"poster": "https://image.tmdb.org/t/p/w342/aNiWJ2C8Amrun55JCvuvGEPIXli.jpg",
+			"backdrop": "https://image.tmdb.org/t/p/w1280/xnGgfaFymvmvqEQ7xSs02jn8IsW.jpg",
+			"overview": null,
+			"rating": 6.3,
+			"genres": [
+				"криминал",
+				"драма"
+			]
+		},
+		{
+			"tmdbId": 3085,
+			"title": "Его девушка Пятница",
+			"year": 1940,
+			"identifier": "his_girl_friday",
+			"file": "his_girl_friday_512kb.mp4",
+			"durationSec": 5505,
+			"sizeMb": 383,
+			"poster": "https://image.tmdb.org/t/p/w342/srIzNzFHGZ3hjLu2rseCm4giokk.jpg",
+			"backdrop": "https://image.tmdb.org/t/p/w1280/ihoQaiMFAz4YCTAaSIsQjRknsNH.jpg",
+			"overview": "Уолтер Берне — главный редактор газеты, Хильди Джонсон — его бывшая жена и лучший репортер. Она приходит сообщить Уолтеру, что выходит замуж и покидает газету.  Прожженный циник, тот все еще любит Хильди, да и лучшего сотрудника терять не хочет, поэтому он дает ей последнее задание — взять интервью у приговоренного к смерти Мерфи. Это будет ее лучший репортаж, вершина карьеры.",
+			"rating": 7.4,
+			"genres": [
+				"комедия",
+				"мелодрама"
+			]
+		},
+		{
+			"tmdbId": 1718,
+			"title": "Дорога на Санта-Фе",
+			"year": 1940,
+			"identifier": "Santa_Fe_Trail_movie",
+			"file": "Santa_Fe_Trail_512kb.mp4",
+			"durationSec": 6578,
+			"sizeMb": 456,
+			"poster": "https://image.tmdb.org/t/p/w342/uBtJzonmF9uOFrDXlqQuxTfMwl7.jpg",
+			"backdrop": "https://image.tmdb.org/t/p/w1280/ejLNia8P6YrKbIpvEsihs0Ei8wL.jpg",
+			"overview": "1854 год. Вест-Пойнт, первый Федеральный кадетский кавалерийский корпус. Джеб Стюарт — новый кадет, который с успехом начинает проходить обучение. Молодой человек находится на хорошем счету у командиров, но, тем не менее, наживает себе врага в лице кадета Карла Райдера радикального аболициониста, настроенного изменить классовую и кастовую систему Америки.  Этот тайный последователь фанатика Джона ",
+			"rating": 5.8,
+			"genres": [
+				"вестерн"
+			]
+		},
+		{
+			"tmdbId": 32574,
+			"title": "Знакомьтесь, Джон Доу",
+			"year": 1941,
+			"identifier": "meet_john_doe",
+			"file": "meet_john_doe_512kb.mp4",
+			"durationSec": 7371,
+			"sizeMb": 511,
+			"poster": "https://image.tmdb.org/t/p/w342/dnBZbFE2OGlTGNGBVTn6t83tJtd.jpg",
+			"backdrop": "https://image.tmdb.org/t/p/w1280/fy2hkQgAWj1st3FWBzqc27JlytC.jpg",
+			"overview": "Хваткая журналистка узнает о своем увольнении и печатает в газете поддельное письмо некоего Джона Доу, разгневанного мужчины, критикующего общественные пороки и грозящегося в знак протеста совершить самоубийство. Письмо получает резонанс, репортершу берут обратно, а для пущей достоверности нанимают безработного экс-бейсболиста на роль Джона Доу…",
+			"rating": 7.3,
+			"genres": [
+				"драма",
+				"комедия",
+				"мелодрама"
+			]
+		},
+		{
+			"tmdbId": 43795,
+			"title": "Грошовая серенада",
+			"year": 1941,
+			"identifier": "penny_serenade",
+			"file": "penny_serenade_512kb.mp4",
+			"durationSec": 7147,
+			"sizeMb": 495,
+			"poster": "https://image.tmdb.org/t/p/w342/7MC1fE5FSEIP9xf0N2VD68zRKv2.jpg",
+			"backdrop": "https://image.tmdb.org/t/p/w1280/cfWxR72RiA3cO9qurVaAAuFoNqk.jpg",
+			"overview": "Распалась семья… Джули Адамс, собрав вещи, хочет уйти из дома, но тут ей на глаза попадаются дешевые грампластинки, которые они с мужем Роджером Адамсом собирали во время совместной жизни. Она ставит одну пластинку, затем вторую и перед ее мысленным взором проходит их такое нелегкое прошлое… Все началось с незапланированного и импульсивного брака с журналистом Роджером. Тогда все было хорошо, но в",
+			"rating": 6.6,
+			"genres": [
+				"драма",
+				"мелодрама"
+			]
+		},
+		{
+			"tmdbId": 23033,
+			"title": "Книга джунглей",
+			"year": 1942,
+			"identifier": "JungleBook",
+			"file": "Jungle_Book_512kb.mp4",
+			"durationSec": 6295,
+			"sizeMb": 436,
+			"poster": "https://image.tmdb.org/t/p/w342/zuFBfnECrFrl6Y1uyHpRzJjqerL.jpg",
+			"backdrop": "https://image.tmdb.org/t/p/w1280/gP2bFlDxNnDECi3MEKI24xxG3Mm.jpg",
+			"overview": "История мальчика Маугли волею судьбы оказавшегося в джунглях, и воспитанного стаей волков, стала для многих поколений настольной книгой и любимым фильмом на все времена. Вы окажетесь в мире джунглей, встретитесь с отважными и храбрыми героями, переживете с ними необычайные и опасные ситуации и увидите сокровища затерянного города обезьян.",
+			"rating": 6.4,
+			"genres": [
+				"приключения",
+				"фэнтези",
+				"семейный"
+			]
+		},
+		{
+			"tmdbId": 18706,
+			"title": "Шерлок Холмс и секретное оружие",
+			"year": 1942,
+			"identifier": "secret_weapon",
+			"file": "secret_weapon_ipod.mp4",
+			"durationSec": 4114,
+			"sizeMb": 333,
+			"poster": "https://image.tmdb.org/t/p/w342/50qLIyhdWrDxcZE0bmHhUaxb2FP.jpg",
+			"backdrop": "https://image.tmdb.org/t/p/w1280/kx7ItDbrIl8oLdGHLIlQWR6eSZp.jpg",
+			"overview": "Работая на британское правительство, Шерлок Холмс должен переправить Франца Тобеля из Швейцарии в Англию прежде, чем до него будет в состоянии добраться Гестапо. Тобель разработал очень точную систему наведения для бомбардировщиков и настаивает на скорейшем внедрении ее в производство. Скоро однако, он исчезает, и оставляет закодированное сообщение, которое Холмс должен расшифровать. Дело начинает",
+			"rating": 6.4,
+			"genres": [
+				"детектив",
+				"триллер",
+				"криминал"
+			]
+		},
+		{
+			"tmdbId": 17058,
+			"title": "Улица греха",
+			"year": 1945,
+			"identifier": "ScarletStreet",
+			"file": "Scarlet_Street_512kb.mp4",
+			"durationSec": 6086,
+			"sizeMb": 421,
+			"poster": "https://image.tmdb.org/t/p/w342/eGEDor1BWSQGaLtOntPHUSqNzRC.jpg",
+			"backdrop": "https://image.tmdb.org/t/p/w1280/g0phljbAcccz7bkSZpFEPVLuIRP.jpg",
+			"overview": "Крис Кросс, застенчивый, наивный господин, утомившийся от собственного благополучия, спасает красивую девушку Китти от неуравновешенного приятеля. Герой увлекается Китти и позволяет ей считать себя состоятельным и успешным художником, не подозревая, что у новой знакомой и ее жениха имеются свои планы относительно него.",
+			"rating": 7.6,
+			"genres": [
+				"драма",
+				"криминал"
+			]
+		},
+		{
+			"tmdbId": 20367,
+			"title": "Объезд",
+			"year": 1945,
+			"identifier": "Detour",
+			"file": "Detour_512kb.mp4",
+			"durationSec": 4058,
+			"sizeMb": 281,
+			"poster": "https://image.tmdb.org/t/p/w342/gJb9HRAs1V4bA0VKsWpT6mhv2RT.jpg",
+			"backdrop": "https://image.tmdb.org/t/p/w1280/uGOKN4VeCsf249zypWfaAzfTxAB.jpg",
+			"overview": "Эл Робертс отправляется автостопом в Лос-Анджелес к своей девушке. Внезапно он обнаруживает, что мужчина подвозивший его, мертв. Он решает спрятать тело и выдать себя за владельца машины. На заправке он знакомится с Верой, которая раскрывает обман и принимается шантажировать Эла.",
+			"rating": 7.2,
+			"genres": [
+				"драма",
+				"триллер"
+			]
+		},
+		{
+			"tmdbId": 75888,
+			"title": "Кровь на солнце",
+			"year": 1945,
+			"identifier": "BloodontheSun",
+			"file": "BloodontheSun_512kb.mp4",
+			"durationSec": 5614,
+			"sizeMb": 389,
+			"poster": "https://image.tmdb.org/t/p/w342/hZ4IDpM7MBdHRTQL6vYZu9jYBvu.jpg",
+			"backdrop": "https://image.tmdb.org/t/p/w1280/ogG40ZQhBIjTS8TG4PPJSVSTJ7V.jpg",
+			"overview": "Ник Кондон, главный редактор газеты «Tokyo Chronicle» печатает статью, раскрывающую план Японии о завоевании мира. Газета доходит до высшей японской военной власти и разгорается скандал, сулящий Нику большие неприятности. Но эта в статье Ник только интуитивно предугадал японские планы, а вот его друг Олли Миллер сумел раздобыть настоящие документы, известные как план премьер-министра Гиичи Танака ",
+			"rating": 5.9,
+			"genres": [
+				"боевик",
+				"драма",
+				"военный"
+			]
+		},
+		{
+			"tmdbId": 20417,
+			"title": "Шерлок Холмс: Прелюдия к убийству",
+			"year": 1946,
+			"identifier": "dressed_to_kill",
+			"file": "dressed_to_kill_512kb.mp4",
+			"durationSec": 4290,
+			"sizeMb": 297,
+			"poster": "https://image.tmdb.org/t/p/w342/oD4z3ON2ciLMv6obEH2K8tGThWG.jpg",
+			"backdrop": "https://image.tmdb.org/t/p/w1280/2LWKnEBMLyPUoDnCZPIuye1YYmD.jpg",
+			"overview": "Сидящий в Дартмурской тюрьме вор скрывает местоположение украденных и спрятанных в музыкальных шкатулках печатных пластин Государственного банка Англии. Когда начинаются убийства невинных покупателей шкатулок, Холмс и Ватсон приступают к расследованию.",
+			"rating": 6.6,
+			"genres": [
+				"детектив",
+				"криминал",
+				"триллер"
+			]
+		},
+		{
+			"tmdbId": 20246,
+			"title": "Чужестранец",
+			"year": 1946,
+			"identifier": "TheStranger_0",
+			"file": "The_Stranger_512kb.mp4",
+			"durationSec": 5473,
+			"sizeMb": 379,
+			"poster": "https://image.tmdb.org/t/p/w342/bzjoPScBLUWpSu10m3GbSbSwVhS.jpg",
+			"backdrop": "https://image.tmdb.org/t/p/w1280/osCupz9uxvUoca6aqSSkns1UnlQ.jpg",
+			"overview": "Действие происходит после Второй мировой войны. Уилсон, федеральный агент, получает задание найти Франца Киндлера, одного из организаторов геноцида еврейского народа. Следы приводят его в сонный университетский городок Хартфорд в штате Коннектикут, где, как он подозревает, под именем профессора Чарлза Рэнкина скрывается Киндлер.",
+			"rating": 7.2,
+			"genres": [
+				"триллер",
+				"криминал"
+			]
+		},
+		{
+			"tmdbId": 22688,
+			"title": "Angel on My Shoulder",
+			"year": 1946,
+			"identifier": "angel_on_my_shoulder",
+			"file": "angel_on_my_shoulder_512kb.mp4",
+			"durationSec": 6081,
+			"sizeMb": 421,
+			"poster": "https://image.tmdb.org/t/p/w342/tIDUVxp1yeq1Bw4KsdAaoEJtSsI.jpg",
+			"backdrop": "https://image.tmdb.org/t/p/w1280/u6yUCjP5s5Vcm98jB5v2PIHsGJB.jpg",
+			"overview": null,
+			"rating": 6.5,
+			"genres": [
+				"фэнтези",
+				"комедия"
+			]
+		},
+		{
+			"tmdbId": 27033,
+			"title": "Странная любовь Марты Айверс",
+			"year": 1946,
+			"identifier": "Martha_Ivers_movie",
+			"file": "Strange_Love_Martha_Ivers_512kb.mp4",
+			"durationSec": 6949,
+			"sizeMb": 481,
+			"poster": "https://image.tmdb.org/t/p/w342/iUAq0UYHglCsnHVbBLcJvZ6KQN9.jpg",
+			"backdrop": "https://image.tmdb.org/t/p/w1280/wyHgr0RZnSPRdcR08cP5nIshLAV.jpg",
+			"overview": "Героиня фильма Марта Айверс собирается убежать с возлюбленным, но случайно убивает свою тетку. Побег не состоялся, возлюбленный исчез, а Марта унаследовала огромное фамильное состояние…",
+			"rating": 7.1,
+			"genres": [
+				"драма",
+				"триллер"
+			]
+		},
+		{
+			"tmdbId": 18649,
+			"title": "My Favorite Brunette",
+			"year": 1947,
+			"identifier": "my_favorite_brunette",
+			"file": "my_favorite_brunette_512kb.mp4",
+			"durationSec": 5212,
+			"sizeMb": 361,
+			"poster": "https://image.tmdb.org/t/p/w342/tTI4QFLQirmIw6YLR5kRAKyDKvv.jpg",
+			"backdrop": "https://image.tmdb.org/t/p/w1280/6Pu1FOyMA3cdGXEjmOrO9J7O4eA.jpg",
+			"overview": null,
+			"rating": 6.7,
+			"genres": [
+				"комедия",
+				"детектив",
+				"мелодрама"
+			]
+		},
+		{
+			"tmdbId": 22356,
+			"title": "Ангел и негодяй",
+			"year": 1947,
+			"identifier": "angel_and_the_badman",
+			"file": "angel_and_the_badman_512kb.mp4",
+			"durationSec": 5971,
+			"sizeMb": 415,
+			"poster": "https://image.tmdb.org/t/p/w342/tbnte13MT1mke828R0rKmNZ41G6.jpg",
+			"backdrop": "https://image.tmdb.org/t/p/w1280/z431y0waKviqvo2Je426ci8z3NY.jpg",
+			"overview": "Ковбой Кёрт Грант — из тех, кого называют «хороший плохой парень». В очередной раз уходя от погони, Кёрт попадает в семью протестантов-квакеров Уортов. Юная Пенелопа Уорт сразу и безоглядно влюбляется в него...",
+			"rating": 6.4,
+			"genres": [
+				"вестерн",
+				"мелодрама",
+				"приключения"
+			]
+		},
+		{
+			"tmdbId": 25503,
+			"title": "Удар",
+			"year": 1949,
+			"identifier": "impact",
+			"file": "impact_512kb.mp4",
+			"durationSec": 6578,
+			"sizeMb": 456,
+			"poster": "https://image.tmdb.org/t/p/w342/r3Psv5Y6vuKv6nYCpUrxArMgZz8.jpg",
+			"backdrop": "https://image.tmdb.org/t/p/w1280/bMKU5vxYx2nhGW45IXFKfRu0n5Z.jpg",
+			"overview": "Успешный бизнесмен из Сан-Франциско Уолтер Уильямс с одобрения совета директоров покупает три завода в Денвере. Его любимая жена Ирэн из-за плохого самочувствия не может поехать с ним, но просит подвезти её двоюродного брата Джима. В дороге Джим, который на самом деле любовник Ирен, пытается убить Уолтера.",
+			"rating": 6.1,
+			"genres": [
+				"триллер",
+				"драма",
+				"детектив"
+			]
+		},
+		{
+			"tmdbId": 20278,
+			"title": "Africa Screams",
+			"year": 1949,
+			"identifier": "AfricaScreams",
+			"file": "Africa_Screams_512kb.mp4",
+			"durationSec": 4735,
+			"sizeMb": 328,
+			"poster": "https://image.tmdb.org/t/p/w342/kwG0Zvu99fFerIJv0qnqHXZ5MWt.jpg",
+			"backdrop": "https://image.tmdb.org/t/p/w1280/m07cPVJ2AtpftYIqXVC1GYW3w6E.jpg",
+			"overview": null,
+			"rating": 5.8,
+			"genres": [
+				"комедия",
+				"приключения",
+				"боевик"
+			]
+		},
+		{
+			"tmdbId": 43386,
+			"title": "Сирано де Бержерак",
+			"year": 1950,
+			"identifier": "Cyrano_DeBergerac",
+			"file": "Cyrano_De_Bergerac_512kb.mp4",
+			"durationSec": 6772,
+			"sizeMb": 468,
+			"poster": "https://image.tmdb.org/t/p/w342/l4JFOXslwb90opz8xozfIhPke8z.jpg",
+			"backdrop": "https://image.tmdb.org/t/p/w1280/sI0ISjxKLbRZwaY5mjUI8SdJeME.jpg",
+			"overview": "Франция. 1640 год, Знаменитый поэт — блестящий гвардейский офицер Сирано де Бержерак влюблен в свою кузину Роксану, о чем она даже не подозревает. Но, насколько непревзойденный фехтовальщик храбр на поле битвы и в многочисленных дуэлях, настолько же робок в любви.\r Из-за своего непомерно длинного и нелепого носа, он совершенно уверен, что Роксана отвергнет его ухаживания. Она же влюбляется в краса",
+			"rating": 6.9,
+			"genres": [
+				"мелодрама",
+				"драма",
+				"приключения"
+			]
+		},
+		{
+			"tmdbId": 23342,
+			"title": "Quicksand",
+			"year": 1950,
+			"identifier": "Quicksand_clear",
+			"file": "Quicksand.mp4",
+			"durationSec": 4742,
+			"sizeMb": 471,
+			"poster": "https://image.tmdb.org/t/p/w342/rTtFvxrHpLECgLE86zStkHYxTyx.jpg",
+			"backdrop": "https://image.tmdb.org/t/p/w1280/k2xBKsOIlqpSvbn5Tc6381v1krq.jpg",
+			"overview": null,
+			"rating": 6.1,
+			"genres": [
+				"криминал",
+				"триллер"
+			]
+		},
+		{
+			"tmdbId": 23325,
+			"title": "Дезертиры",
+			"year": 1950,
+			"identifier": "AtWarWithTheArmy",
+			"file": "AtWarWithTheArmy_512kb.mp4",
+			"durationSec": 5431,
+			"sizeMb": 376,
+			"poster": "https://image.tmdb.org/t/p/w342/viLzurxFrHbosBtTGf0gkPKa9qx.jpg",
+			"backdrop": "https://image.tmdb.org/t/p/w1280/h5GoZPqorCVBQd2kbkBogQ9CL2l.jpg",
+			"overview": "Джерри Льюис играет несчастливого солдата, а Дин Мартин удачливого старшего сержанта неряшливого взвода на тренировочной базе в удаленном пограничном гарнизоне.В этой комедии представлены все типы «военных» характеров, включая горлопана-инструктора, подлизу-сержанта, тихого капрала и неуклюжего, постоянно клюющего носом, командира...",
+			"rating": 5.3,
+			"genres": [
+				"комедия",
+				"военный"
+			]
+		},
+		{
+			"tmdbId": 70106,
+			"title": "Утопия",
+			"year": 1951,
+			"identifier": "utopia",
+			"file": "Utopia_512kb.mp4",
+			"durationSec": 8519,
+			"sizeMb": 564,
+			"poster": "https://image.tmdb.org/t/p/w342/gyl8rTC5fjGFNdqe2NcQjuKd6Is.jpg",
+			"backdrop": "https://image.tmdb.org/t/p/w1280/qaYIuRbwgBDgjgkYN7aTxAefnnU.jpg",
+			"overview": "Герои получают в наследство собственный остров в южных морях и небольшую яхту в придачу. Они немедленно отправляются на яхте осмотреть свои владения, но, увы, мощный шторм выбрасывает ветхое суденышко на атолл, где новоявленные Робинзоны начинают вести хозяйство. Правда, никто из них даже не догадывается, что они расположились на месторождении урана!",
+			"rating": 5.6,
+			"genres": [
+				"комедия"
+			]
+		},
+		{
+			"tmdbId": 18646,
+			"title": "Королевская свадьба",
+			"year": 1951,
+			"identifier": "royal_wedding",
+			"file": "royal_wedding_512kb.mp4",
+			"durationSec": 5497,
+			"sizeMb": 378,
+			"poster": "https://image.tmdb.org/t/p/w342/5hOyBgsmSApFl10ZfaYxUTQu5Ze.jpg",
+			"backdrop": "https://image.tmdb.org/t/p/w1280/iBVKjk68mfOZNW0TtymZj00g7Qv.jpg",
+			"overview": "Брат и сестра по дороге на гастроли в Лондон находят свою любовь. Брат и сестра — Том и Эллен — популярные танцоры из Нью-Йорка. Они получают приглашение на королевскую свадьбу в Лондоне. На корабле Эллен знакомится с молодым красивым лордом, а холостяк Том — с талантливой танцовщицей…",
+			"rating": 6.5,
+			"genres": [
+				"музыка",
+				"комедия",
+				"мелодрама"
+			]
+		},
+		{
+			"tmdbId": 56597,
+			"title": "Только отважные",
+			"year": 1951,
+			"identifier": "OnlytheValaint",
+			"file": "OnlytheValaint_512kb.mp4",
+			"durationSec": 6292,
+			"sizeMb": 435,
+			"poster": "https://image.tmdb.org/t/p/w342/7j2DB5PBuyxXMDKM8t5sia87wht.jpg",
+			"backdrop": "https://image.tmdb.org/t/p/w1280/mtbW3Yu3YsqTmilJNF5zbUG1lfU.jpg",
+			"overview": "Капитан Ричард Ланс — один из самых смелых офицеров Америки. Его немногочисленный отряд направлен для удержания небольшого форта, расположенного в ущелье гор. Солдатам предстоит защищать перевал и отражать одну за другой кровавые атаки индейцев до прихода основных армейских сил.\r Отряд, который достался Лансу, состоит в основном из сомнительных граждан, каждый из которых ненавидит капитана по той ",
+			"rating": 6.5,
+			"genres": [
+				"вестерн"
+			]
+		},
+		{
+			"tmdbId": 4460,
+			"title": "Снега Килиманджаро",
+			"year": 1952,
+			"identifier": "Kilimanjaro",
+			"file": "The_Snows_of_Kilimanjaro_512kb.mp4",
+			"durationSec": 6783,
+			"sizeMb": 467,
+			"poster": "https://image.tmdb.org/t/p/w342/xIdEt2rycY6h3QAKGqWrIGqhviD.jpg",
+			"backdrop": "https://image.tmdb.org/t/p/w1280/zQERahUUbVZTosd41NNUPNHqSKJ.jpg",
+			"overview": "Созерцая великую Африканскую вершину, писатель Гарри Смит окружен своими воспоминаниями о прожитой жизни, ведь он понимает, что он ранен в ногу и его рана смертельна. Гангрена.  Перед глазами героя проходят образы прошлых лет, возвращая его то к воспоминаниям о войне, то в знойную Испанию, где он встретил свою истинную любовь Синтию Грин. После ее трагической гибели он потерял интерес к жизни.  В ",
+			"rating": 5.9,
+			"genres": [
+				"приключения",
+				"мелодрама",
+				"драма"
+			]
+		},
+		{
+			"tmdbId": 18698,
+			"title": "Джек и бобовый стебель",
+			"year": 1952,
+			"identifier": "cco_jackandthebeanstalk",
+			"file": "ccoPublicDomainJack_and_the_Beanstalk_512kb.mp4",
+			"durationSec": 4898,
+			"sizeMb": 339,
+			"poster": "https://image.tmdb.org/t/p/w342/psogkzcA2yOT0Tz669i0Lm1eZXM.jpg",
+			"backdrop": "https://image.tmdb.org/t/p/w1280/8FviMNXvzW4o17Dx2noM7cXz3XU.jpg",
+			"overview": "Версия знаменитой сказки Эбботта и Костелло о мальчике, который обменивает семейную корову на волшебные бобы.",
+			"rating": 5.7,
+			"genres": [
+				"комедия",
+				"фэнтези",
+				"музыка"
+			]
+		},
+		{
+			"tmdbId": 41462,
+			"title": "Автостопщик",
+			"year": 1953,
+			"identifier": "Hitch_Hiker",
+			"file": "Hitch-Hiker_512kb.mp4",
+			"durationSec": 4248,
+			"sizeMb": 292,
+			"poster": "https://image.tmdb.org/t/p/w342/9ORvQWC2o0FwIEl6zYU1jw9qH0X.jpg",
+			"backdrop": "https://image.tmdb.org/t/p/w1280/r25MOqbIjOVw2lK7MrZ1dGFNjiy.jpg",
+			"overview": "Двое друзей решают отдохнуть и порыбачить в Мексике. Ночью по дороге на побережье Калифорнийского залива они подбирают водителя, в машине которого закончился бензин. С этого момента их жизнь превращается в один сплошной кошмар. Таинственный водитель оказывается убийцей, орудующим на дорогах западного побережья США.",
+			"rating": 6.8,
+			"genres": [
+				"триллер",
+				"криминал",
+				"драма"
+			]
+		},
+		{
+			"tmdbId": 18398,
+			"title": "Suddenly",
+			"year": 1954,
+			"identifier": "suddenly",
+			"file": "suddenly_512kb.mp4",
+			"durationSec": 4533,
+			"sizeMb": 315,
+			"poster": "https://image.tmdb.org/t/p/w342/v0eQfRMVJtvEkaJjBsSrd6ri1UI.jpg",
+			"backdrop": "https://image.tmdb.org/t/p/w1280/mxW3h5E71IOnctX65wRWBTqwm5i.jpg",
+			"overview": null,
+			"rating": 6.4,
+			"genres": [
+				"криминал",
+				"триллер"
+			]
+		},
+		{
+			"tmdbId": 23045,
+			"title": "Killers from Space",
+			"year": 1954,
+			"identifier": "Killers_from_space",
+			"file": "Killers_from_space_512kb.mp4",
+			"durationSec": 4255,
+			"sizeMb": 295,
+			"poster": "https://image.tmdb.org/t/p/w342/ajQgkwtcVvjqBcDq31qwbn8svyT.jpg",
+			"backdrop": "https://image.tmdb.org/t/p/w1280/6vgwY2uMmvgNJiWN20NviRic7Wt.jpg",
+			"overview": null,
+			"rating": 3.8,
+			"genres": [
+				"ужасы",
+				"фантастика"
+			]
+		},
+		{
+			"tmdbId": 23020,
+			"title": "Jail Bait",
+			"year": 1954,
+			"identifier": "JailBait",
+			"file": "JailBait.mp4",
+			"durationSec": 4272,
+			"sizeMb": 511,
+			"poster": "https://image.tmdb.org/t/p/w342/av2ppBDn3Z9BSBByao9WEv8XWXA.jpg",
+			"backdrop": "https://image.tmdb.org/t/p/w1280/nYTLewoAsZ2y3BNwwT9lLX8mEJT.jpg",
+			"overview": null,
+			"rating": 3.8,
+			"genres": [
+				"криминал",
+				"триллер"
+			]
+		},
+		{
+			"tmdbId": 15856,
+			"title": "Дом ночных призраков",
+			"year": 1959,
+			"identifier": "house_on_haunted_hill_ipod",
+			"file": "house_on_haunted_hill.mp4",
+			"durationSec": 4483,
+			"sizeMb": 805,
+			"poster": "https://image.tmdb.org/t/p/w342/6cce8KdSaZXyHa7YwQycybxROjH.jpg",
+			"backdrop": "https://image.tmdb.org/t/p/w1280/vzw5733T4PSielVOeq268GdSzhS.jpg",
+			"overview": "Эксцентричный Фредерик Лорен с супругой Аннабель арендовали на одну ночь старинный особняк, заведомо зная, что в замке бродят агрессивно настроенные привидения, с целью устроить там вечеринку. Условия арендаторов были таковы: пятеро гостей должны провести вместе с ними всю ночь, а наутро, если останутся живы, каждый получит по 10 000 долларов.",
+			"rating": 6.8,
+			"genres": [
+				"ужасы",
+				"детектив"
+			]
+		},
+		{
+			"tmdbId": 35139,
+			"title": "Тинейджеры из космоса",
+			"year": 1959,
+			"identifier": "teenagers_from_outerspace",
+			"file": "Teenagers_from_Outer_Space.mp4",
+			"durationSec": 5129,
+			"sizeMb": 998,
+			"poster": "https://image.tmdb.org/t/p/w342/i3T50v0ZNJFyVOpRdEhc41fFV6f.jpg",
+			"backdrop": "https://image.tmdb.org/t/p/w1280/kkOZz1mNVvZSrRzc02gaE2lPxX7.jpg",
+			"overview": "Пришелец-тинейджер Дерек прибывает на Землю в составе инопланетной экспедиции, призванной выполнить важную миссию — определить, насколько земной воздух подходит для разведения монстров гаргонов, играющих роль космического скота. Как выясняется, атмосфера планеты вполне подходит для скотоводства, более того — гаргоны растут на удивление быстро. Тем временем Дерек находит доказательства существовани",
+			"rating": 4.1,
+			"genres": [
+				"криминал",
+				"ужасы",
+				"фантастика"
+			]
+		},
+		{
+			"tmdbId": 22718,
+			"title": "Attack of the Giant Leeches",
+			"year": 1959,
+			"identifier": "cco_attackofthegiantleeches",
+			"file": "ccoPublicDomainAttack_of_the_Giant_Leeches_512kb.mp4",
+			"durationSec": 3739,
+			"sizeMb": 259,
+			"poster": "https://image.tmdb.org/t/p/w342/n3dAhWfWxsNQJ5ZUcn8Q3mW8EIP.jpg",
+			"backdrop": "https://image.tmdb.org/t/p/w1280/z9yXcMBSq2UUBgM8h1V92sD7NZN.jpg",
+			"overview": null,
+			"rating": 4.0,
+			"genres": [
+				"ужасы",
+				"фантастика"
+			]
+		},
+		{
+			"tmdbId": 39890,
+			"title": "Отель ужасов",
+			"year": 1960,
+			"identifier": "Horror_Hotel",
+			"file": "Horror_Hotel_512kb.mp4",
+			"durationSec": 4554,
+			"sizeMb": 315,
+			"poster": "https://image.tmdb.org/t/p/w342/ysz4kkVnHwCqfuioJyx6LHBShEs.jpg",
+			"backdrop": "https://image.tmdb.org/t/p/w1280/bL5RTR6JXRc2tEjbTsUbGxem8gU.jpg",
+			"overview": "Третьего марта 1692 года в маленьком английском городке Вайтвуд по обвинению в колдовстве была сожжена молодая женщина Элизабет Селвин. Но перед самой смертью она успевает заключить сделку с самим дьяволом. В обмен на вечную жизнь она обречена всегда творить только зло.  Наше время. Профессор Алан Дрисколл рассказывает студентам о колдовстве, которое процветало в средневековье. Одна из студенток Н",
+			"rating": 6.5,
+			"genres": [
+				"детектив",
+				"ужасы"
+			]
+		},
+		{
+			"tmdbId": 24452,
+			"title": "Магазинчик ужасов",
+			"year": 1960,
+			"identifier": "Little_ShopOf_Horrors.avi",
+			"file": "The_Little_Shop_of_Horrors_512kb.mp4",
+			"durationSec": 4351,
+			"sizeMb": 301,
+			"poster": "https://image.tmdb.org/t/p/w342/s9MrumN9oCfv1rFoEvMLwucWD7V.jpg",
+			"backdrop": "https://image.tmdb.org/t/p/w1280/sGz7JApiDtClRFxffIw3WgRK8y2.jpg",
+			"overview": "Служащий цветочной лавочки встретил японца, который подарил ему диковинный цветок. Парень холил и лелеял его, пока однажды растение не заговорило с ним человеческим голосом! Цветок потребовал еды, да не простой еды, а свежей человеческой плоти! Скоро этот монстр вырос до невообразимых размеров и стал пожирать случайных посетителей!",
+			"rating": 6.3,
+			"genres": [
+				"ужасы",
+				"комедия",
+				"фэнтези"
+			]
+		},
+		{
+			"tmdbId": 16093,
+			"title": "Карнавал душ",
+			"year": 1962,
+			"identifier": "CarnivalofSouls",
+			"file": "CarnivalOfSouls_512kb.mp4",
+			"durationSec": 4980,
+			"sizeMb": 345,
+			"poster": "https://image.tmdb.org/t/p/w342/AdbQsFB8pS090l0NO3uBtLZy2zw.jpg",
+			"backdrop": "https://image.tmdb.org/t/p/w1280/esIoQw7VaykfHsw6fx2VltZ1R7U.jpg",
+			"overview": "Автомобильная катастрофа. Машина падает с моста в реку. В живых остается только юная Мэри Генри. Она переезжает в маленький городок и хочет начать новую жизнь в качестве органиста местной церкви. Вскоре она начинает замечать странные вещи: нормальные люди в городе, кажется, не видят ее, а приветствуют только бледнолицые типы, которые выглядят мертвыми и прогуливаются в заброшенном парке за городом",
+			"rating": 6.9,
+			"genres": [
+				"ужасы",
+				"детектив",
+				"фэнтези"
+			]
+		},
+		{
+			"tmdbId": 15263,
+			"title": "МакЛинток!",
+			"year": 1963,
+			"identifier": "mclintok_widescreen",
+			"file": "McLintock.mp4",
+			"durationSec": 7607,
+			"sizeMb": 1482,
+			"poster": "https://image.tmdb.org/t/p/w342/gjaAtWJqGomsE5qNQStHcHhSzES.jpg",
+			"backdrop": "https://image.tmdb.org/t/p/w1280/cPAabDXqphKbEa8uCNb4uqATGwP.jpg",
+			"overview": "Богатый скотовод и землевладелец Джордж Вашингтон МакЛинток — настоящий король дикого запада. Ему принадлежат все ранчо, шахты и лесопилки в округе, и при этом он умудряется оставаться честным и добропорядочным человеком с незапятнанной репутацией. В его жизни есть лишь одна проблема — внезапно вновь объявившаяся на пороге его дома жена-беглянка Кэтрин.",
+			"rating": 6.6,
+			"genres": [
+				"вестерн",
+				"комедия"
+			]
+		},
+		{
+			"tmdbId": 22758,
+			"title": "Il boia scarlatto",
+			"year": 1965,
+			"identifier": "BloodyPitOfHorror",
+			"file": "BloodyPitOfHorror.mp4",
+			"durationSec": 4944,
+			"sizeMb": 492,
+			"poster": "https://image.tmdb.org/t/p/w342/4Bf1FYCjeJ4QTGAtw6r8dQJ13oW.jpg",
+			"backdrop": "https://image.tmdb.org/t/p/w1280/vUAnVogNDQWhwg9YOhacgede1P4.jpg",
+			"overview": null,
+			"rating": 4.6,
+			"genres": [
+				"ужасы"
+			]
+		},
+		{
+			"tmdbId": 10331,
+			"title": "Ночь живых мертвецов",
+			"year": 1968,
+			"identifier": "Night.Of.The.Living.Dead_1080p",
+			"file": "NightOfTheLivingDead_PS3.mp4",
+			"durationSec": 5753,
+			"sizeMb": 1776,
+			"poster": "https://image.tmdb.org/t/p/w342/hDgH2UKSM1ViaU1SrXr2dyMS5cb.jpg",
+			"backdrop": "https://image.tmdb.org/t/p/w1280/5KtmBSqFtHY3I9t8lgH27Mc0bqY.jpg",
+			"overview": "Барбра и её брат Джонни приезжают на кладбище, расположенное в уединённом загородном месте. Неожиданно на них нападают существа, напоминающие восставших из могил мертвецов. Барбра укрывается в расположенном неподалёку доме, где также находят убежище темнокожий парень Бен, супруги Гарри и Хелен Куперы с дочерью Карен, а также влюблённые Том и Джуди.",
+			"rating": 7.6,
+			"genres": [
+				"ужасы",
+				"триллер",
+				"фантастика"
+			]
+		},
+		{
+			"tmdbId": 42358,
+			"title": "Холодный пот",
+			"year": 1970,
+			"identifier": "cold_sweat.avi",
+			"file": "Cold_Sweat_512kb.mp4",
+			"durationSec": 5597,
+			"sizeMb": 387,
+			"poster": "https://image.tmdb.org/t/p/w342/9rbTkc6FWhJS0IrNRPQ2Fcn1x6v.jpg",
+			"backdrop": "https://image.tmdb.org/t/p/w1280/rJ6iF4n0w5HOY7PSbCu9cuKNEhL.jpg",
+			"overview": "Джо Мартин живет со своей семьей во Франции. Однажды его спокойная жизнь нарушается звонками с угрозами. Он сохраняет спокойствие и, кажется, догадывается кто это. Это люди из его прошлого. Прошлого, возврата которого он не хочет. Люди, которые жаждут мести.",
+			"rating": 5.7,
+			"genres": [
+				"триллер",
+				"боевик",
+				"криминал"
+			]
+		},
+		{
+			"tmdbId": 32613,
+			"title": "Поезд ужасов",
+			"year": 1972,
+			"identifier": "Horror_Express",
+			"file": "Horror_Express_512kb.mp4",
+			"durationSec": 5224,
+			"sizeMb": 356,
+			"poster": "https://image.tmdb.org/t/p/w342/afa45o46o9l1uDFhtUIA70EBy1h.jpg",
+			"backdrop": "https://image.tmdb.org/t/p/w1280/ok4zZ7MCpYS6PaT2ijUrb7Ankc5.jpg",
+			"overview": "1906 год. Геологическая экспедиция находит в глухом районе Китая захоронение. Останки грузятся в Пекине на транссибирский экспресс. Уже при погрузке русский священник утверждает, что там нечистая сила.",
+			"rating": 6.3,
+			"genres": [
+				"ужасы"
+			]
+		},
+		{
+			"tmdbId": 27084,
+			"title": "Вторжение девушек-пчел",
+			"year": 1973,
+			"identifier": "InvasionOfTheBeeGirls",
+			"file": "InvasionOfTheBeeGirls_512kb.mp4",
+			"durationSec": 5188,
+			"sizeMb": 359,
+			"poster": "https://image.tmdb.org/t/p/w342/wIE6Fsq9KHTwBUOWwy1q9HwOXz3.jpg",
+			"backdrop": "https://image.tmdb.org/t/p/w1280/8A0spwCdHvII4EYAryvIiT9nBxV.jpg",
+			"overview": "Нил Агар, агент службы безопасности Государственного департамента США, направляется в Пекхэм, штат Калифорния, для расследования смерти бактериолога, работавшего в спонсируемом правительством исследовательском центре. Его расследование вскоре осложняется растущим числом смертей, причем все мужчины умерли от хронической сердечной недостаточности, вызванной сексуальным истощением.",
+			"rating": 4.6,
+			"genres": [
+				"ужасы",
+				"фантастика",
+				"триллер"
+			]
+		},
+		{
+			"tmdbId": 25318,
+			"title": "Побег из Собибора",
+			"year": 1987,
+			"identifier": "Escape_From_Sobibor.avi",
+			"file": "Escape_from_Sobibor_512kb.mp4",
+			"durationSec": 7149,
+			"sizeMb": 495,
+			"poster": "https://image.tmdb.org/t/p/w342/w3IGS3gAecPB5dNeQH4926S9PSi.jpg",
+			"backdrop": "https://image.tmdb.org/t/p/w1280/sOhrxGvSJOaAJdBXHu1vQImfGuj.jpg",
+			"overview": "Собибор — гитлеровский концлагерь на территории Польши, один из десятков нацистских лагерей смерти, построенных специально для уничтожения евреев из завоеванных немцами стран. Был закрыт по личному распоряжению СС Гиммлера после того, как в нем произошел самый массовый в истории лагерей смерти побег заключенных, решивших оказать сопротивление нацистскому «порядку». Основной замысел и организацию в",
+			"rating": 7.2,
+			"genres": [
+				"драма",
+				"триллер",
+				"военный"
+			]
+		},
+		{
+			"tmdbId": 9410,
+			"title": "Большие надежды",
+			"year": 1998,
+			"identifier": "GreatExpectations1946",
+			"file": "GreatExpectations1946_512kb.mp4",
+			"durationSec": 6801,
+			"sizeMb": 468,
+			"poster": "https://image.tmdb.org/t/p/w342/8ZzbUzCuHpj405HLPQC4gI9vaKM.jpg",
+			"backdrop": "https://image.tmdb.org/t/p/w1280/laXkVCU5DE8Dib0QVHUUUsE7FM6.jpg",
+			"overview": "Когда юный Финн впервые увидел прекрасную Эстеллу, сердце его разбилось. Несмотря на предсказание, гласящее о том, что страсть к Эстелле не принесет ему ничего хорошего, Финн поклялся завоевать прекрасную девушку.  Годы спустя, стараниями таинственного благодетеля, молодой художник Финн оказывается в Нью-Йорке, где опять встречает свою неразделенную любовь. Но в тот самый момент, когда Финн снова ",
+			"rating": 6.6,
+			"genres": [
+				"комедия",
+				"драма",
+				"мелодрама"
+			]
+		},
+		{
+			"tmdbId": 79464,
+			"title": "Рок-звезда",
+			"year": 2011,
+			"identifier": "rockstar-2011",
+			"file": "Rockstar (2011).mp4",
+			"durationSec": 9544,
+			"sizeMb": 898,
+			"poster": "https://image.tmdb.org/t/p/w342/cJZC9riwrdATBUonkZJZD6y9g40.jpg",
+			"backdrop": "https://image.tmdb.org/t/p/w1280/3UseBwzKsUmMN37XcahJSVYRWkf.jpg",
+			"overview": "Эта история любви и жизни известного исполнителя по имени Джанардан Джакхара. Его путь к вершине музыкального олимпа был долог и труден, но, все же, он сумел преодолеть все проблемы и невзгоды и стать настоящей рок-звездой. Он встретил ее еще тогда, когда не был знаменит и популярен. В то время для него было главное стать звездой, и, преследуя свои корыстные цели, он начал встречаться с ней. Но по",
+			"rating": 7.3,
+			"genres": [
+				"драма",
+				"музыка",
+				"мелодрама"
+			]
+		}
+	]
+}

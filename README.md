@@ -185,10 +185,11 @@ src/
 
 ## CDN-источники (Cobalt · Titan · Carbon)
 
-Помимо Jellyfin, каталог играется через внешние CDN-скраперы — резолвер
-`lightstream.ws/api/scrape` (env `SCRAPERS_ENABLED`, `SCRAPER_API_URL`).
-Потоки Titan и Cobalt идут через same-origin прокси `/api/hls`, картинки
-TMDB — через `/api/img` (обходит DNS-блокировки провайдеров).
+Помимо Jellyfin, каталог может использовать внешние CDN-источники через резолвер
+`lightstream.ws/api/scrape` (env `SCRAPERS_ENABLED`, `SCRAPER_API_URL`). Потоки
+отдаются браузеру напрямую: источник должен явно разрешать такое воспроизведение;
+same-origin прокси потока в проекте нет. Картинки TMDB идут через `/api/img`
+(обходит DNS-блокировки провайдеров).
 
 Если API провайдера недоступен для датацентровых IP (бан), поднимите
 свой прокси на Cloudflare Workers — готовый код в `cf-worker-proxy.js` —

@@ -6,7 +6,7 @@
  *   2. Workers & Pages → Create Worker → назовите ls-proxy → Deploy
  *   3. Edit code → вставьте этот файл → Deploy
  *   4. Получите URL вида https://ls-proxy.<ваш-субдомен>.workers.dev
- *   5. На сайте задайте переменную окружения SCRAPERS_API_URL:
+ *   5. На сайте задайте переменную окружения SCRAPER_API_URL:
  *      https://ls-proxy.<субдомен>.workers.dev/api/scrape
  */
 

@@ -11,31 +11,42 @@ import { JellyfinClient } from './jellyfin';
 import { LibraryIndex } from './library-index';
 import { TmdbClient } from './tmdb';
 
+/**
+ * Значение переменной или дефолт. Именно ИЛИ, а не ??: панели хостингов
+ * (Vercel в том числе) отдают заведённую, но не заполненную переменную пустой
+ * строкой, а не undefined. С ?? такая переменная переживает дефолт, и пустой
+ * language='' уходит в TMDB — тот молча отвечает по-английски. Каталог
+ * оказывается английским при русском интерфейсе, и виноватым выглядит токен.
+ */
+const envOr = (value: string | undefined, fallback: string) => value?.trim() || fallback;
+
 export const config = {
-	demoMode: env.DEMO_MODE === 'true' || !(env.TMDB_API_KEY || env.TMDB_READ_TOKEN),
+	demoMode: env.DEMO_MODE === 'true' || !(env.TMDB_API_KEY?.trim() || env.TMDB_READ_TOKEN?.trim()),
 
 	tmdb: {
-		apiKey: env.TMDB_API_KEY ?? '',
+		apiKey: (env.TMDB_API_KEY ?? '').trim(),
 		/**
 		 * v4 Read Access Token. Если задан — используется вместо api_key: один
 		 * креденшл работает и в v3, и в v4, и уходит заголовком, а не в URL.
 		 */
-		readToken: env.TMDB_READ_TOKEN ?? '',
-		language: env.TMDB_LANGUAGE ?? 'ru-RU',
-		region: env.TMDB_REGION ?? 'RU'
+		readToken: (env.TMDB_READ_TOKEN ?? '').trim(),
+		language: envOr(env.TMDB_LANGUAGE, 'ru-RU'),
+		region: envOr(env.TMDB_REGION, 'RU')
 	},
 
 	jellyfin: {
-		baseUrl: (env.JELLYFIN_URL ?? '').replace(/\/+$/, ''),
-		clientName: env.JELLYFIN_CLIENT_NAME ?? 'Kinema',
+		// trim до проверки: случайный пробел в переменной иначе делает
+		// isJellyfinConfigured() истинным при нерабочем адресе.
+		baseUrl: (env.JELLYFIN_URL ?? '').trim().replace(/\/+$/, ''),
+		clientName: envOr(env.JELLYFIN_CLIENT_NAME, 'Kinema'),
 		version: '0.1.0',
-		apiKey: env.JELLYFIN_API_KEY ?? ''
+		apiKey: (env.JELLYFIN_API_KEY ?? '').trim()
 	},
 
-	sessionSecret: env.SESSION_SECRET ?? 'dev-insecure-secret',
-	indexPath: env.INDEX_PATH ?? 'data/index.json',
+	sessionSecret: envOr(env.SESSION_SECRET, 'dev-insecure-secret'),
+	indexPath: envOr(env.INDEX_PATH, 'data/index.json'),
 	/** Как часто пересобирать индекс библиотеки, в минутах. */
-	indexRefreshMinutes: Number.parseInt(env.INDEX_REFRESH_MINUTES ?? '60', 10),
+	indexRefreshMinutes: Number.parseInt(envOr(env.INDEX_REFRESH_MINUTES, '60'), 10),
 
 	/* ------------------------------ CDN-скраперы ----------------------------- */
 	/*
@@ -51,11 +62,14 @@ export const config = {
 	 */
 	scrapers: {
 		enabled: env.SCRAPERS_ENABLED === 'true',
-		apiUrl: env.SCRAPER_API_URL ?? 'https://lightstream.ws/api/scrape',
+		apiUrl: envOr(env.SCRAPER_API_URL, 'https://lightstream.ws/api/scrape'),
 		// Upstream отдаёт потоки только «своему» источнику — шлём Origin.
-		apiOrigin: env.SCRAPER_API_ORIGIN ?? 'https://lightstream.ws',
+		apiOrigin: envOr(env.SCRAPER_API_ORIGIN, 'https://lightstream.ws'),
 		/** Источники через запятую; порядок = приоритет. */
-		sources: (env.SCRAPER_SOURCES ?? 'cobalt,titan,carbon').split(',').map((s) => s.trim())
+		sources: envOr(env.SCRAPER_SOURCES, 'cobalt,titan,carbon')
+			.split(',')
+			.map((s) => s.trim())
+			.filter(Boolean)
 	}
 } as const;
 

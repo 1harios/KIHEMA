@@ -21,6 +21,14 @@ async function bootstrap() {
 
 	await libraryIndex.load();
 
+	// Язык каталога — в лог. Пустая переменная окружения на хостинге даёт
+	// английские названия при русском интерфейсе, и без этой строки причину
+	// приходится искать через ответы API.
+	console.log(
+		`[boot] каталог: язык=${config.tmdb.language} регион=${config.tmdb.region}` +
+			` креденшл=${config.tmdb.readToken ? 'read-token' : config.tmdb.apiKey ? 'api-key' : 'нет'}`
+	);
+
 	if (config.demoMode || !jellyfinAdmin) {
 		if (config.demoMode) console.log('[boot] демо-режим: Jellyfin и TMDB не используются');
 		return;

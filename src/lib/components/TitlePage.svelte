@@ -28,12 +28,12 @@
 	import Chip from './ui/Chip.svelte';
 	import Icon, { type IconName } from './ui/Icon.svelte';
 	import RatingArc from './ui/RatingArc.svelte';
-	import { genreIcon } from '$lib/genreIcons';
 	import { lists } from '$lib/lists.svelte';
 	import { registerKeys } from '$lib/keys.svelte';
 	import { reveal } from '$lib/reveal';
 	import { toSlug } from '$lib/slug';
 	import type { EpisodeSummary, TitleDetails } from '$lib/types';
+	import GenreIcon from './ui/GenreIcon.svelte';
 
 	interface Props {
 		title: TitleDetails;
@@ -449,7 +449,7 @@
 										       duration-[var(--t-fast)] hover:text-accent hover:underline
 										       hover:decoration-accent/50 hover:underline-offset-4 tv:text-lg"
 									>
-										<Icon name={genreIcon(g.id)} size={14} class="opacity-60" />
+										<GenreIcon id={g.id} size={14} />
 										{g.name}
 									</a>
 								{/each}

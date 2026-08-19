@@ -33,11 +33,11 @@
 	 * аварийный вариант: логотип есть далеко не у всех.
 	 */
 
-	import { genreIcon } from '$lib/genreIcons';
 	import { lists } from '$lib/lists.svelte';
 	import { logoOf, requestLogo } from '$lib/logos.svelte';
 	import { toSlug } from '$lib/slug';
 	import type { CatalogItem } from '$lib/types';
+	import GenreIcon from './ui/GenreIcon.svelte';
 	import Icon from './ui/Icon.svelte';
 	import RatingArc from './ui/RatingArc.svelte';
 
@@ -265,7 +265,7 @@
 										<!-- Иконку ставим только когда жанр известен по номеру: иначе у всех
 										     оказалась бы одна заглушка-плёнка, и графика переставала бы
 										     различать жанры — то есть мешала бы. -->
-										{#if id}<Icon name={genreIcon(id)} size={14} class="opacity-60" />{/if}
+										{#if id}<GenreIcon {id} size={14} />{/if}
 										{name}
 									</span>
 								{/each}

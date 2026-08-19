@@ -22,8 +22,8 @@
 	import RatingArc from '$lib/components/ui/RatingArc.svelte';
 	import MediaCard from '$lib/components/MediaCard.svelte';
 	import { DECADES, RATING_STEPS, RUNTIME_BUCKETS } from '$lib/filters';
-	import { genreIcon } from '$lib/genreIcons';
 	import { lists } from '$lib/lists.svelte';
+	import GenreIcon from '$lib/components/ui/GenreIcon.svelte';
 	import { toSlug } from '$lib/slug';
 	import type { CatalogItem } from '$lib/types';
 	import type { PageData } from './$types';
@@ -264,7 +264,7 @@
 									? 'border-accent bg-accent font-semibold text-accent-ink'
 									: 'border-line text-dim hover:border-line-strong hover:text-ink'}"
 							>
-								<Icon name={genreIcon(g.id)} size={15} />
+								<GenreIcon id={g.id} size={14} variant="chip" />
 								{g.name}
 							</a>
 						{/each}

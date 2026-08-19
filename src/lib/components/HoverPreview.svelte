@@ -31,11 +31,11 @@
 	 * никогда не открывается пустой.
 	 */
 
-	import { genreIcon } from '$lib/genreIcons';
 	import { lists } from '$lib/lists.svelte';
 	import { preview } from '$lib/preview.svelte';
 	import { progress } from '$lib/progress.svelte';
 	import { toSlug } from '$lib/slug';
+	import GenreIcon from './ui/GenreIcon.svelte';
 	import Icon from './ui/Icon.svelte';
 	import RatingArc from './ui/RatingArc.svelte';
 
@@ -240,7 +240,7 @@
 					{#each genres.slice(0, 3) as name, i (name)}
 						{@const id = item.genreIds?.[i]}
 						<span class="inline-flex items-center gap-1">
-							{#if id}<Icon name={genreIcon(id)} size={12} class="opacity-60" />{/if}
+							{#if id}<GenreIcon {id} size={12} />{/if}
 							{name}
 						</span>
 					{/each}

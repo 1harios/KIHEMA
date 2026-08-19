@@ -41,9 +41,9 @@
 		toggleGenre,
 		toggleInList
 	} from '$lib/filters';
-	import { genreIcon } from '$lib/genreIcons';
 	import type { DiscoverFilters, MediaType, WatchProvider } from '$lib/types';
 	import Chip from './ui/Chip.svelte';
+	import GenreIcon from './ui/GenreIcon.svelte';
 	import Icon, { type IconName } from './ui/Icon.svelte';
 
 	interface Props {
@@ -236,7 +236,7 @@
 						</span>
 					{/if}
 
-					<Icon name={genreIcon(g.id)} size={22} class="shrink-0 tv:h-8 tv:w-8" />
+					<GenreIcon id={g.id} size={21} variant="tile" class="tv:scale-125" />
 					<span class="text-[11.5px] font-medium leading-tight tv:text-base">{g.name}</span>
 				</a>
 			{/each}

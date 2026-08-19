@@ -14,7 +14,7 @@
 	import Icon from '$lib/components/ui/Icon.svelte';
 	import Lightbox from '$lib/components/Lightbox.svelte';
 	import RatingArc from '$lib/components/ui/RatingArc.svelte';
-	import { toSlug } from '$lib/slug';
+	import { toMediaSlug } from '$lib/slug';
 	import type { PersonCredit } from '$lib/types';
 	import type { PageData } from './$types';
 
@@ -457,7 +457,7 @@
 									{@const item = entry.item}
 									<li>
 										<a
-											href="/{item.type}/{toSlug(item.tmdbId, item.title)}"
+											href="/{item.type}/{toMediaSlug(item)}"
 											class="group flex items-center gap-3.5 rounded-md p-2 transition
 											       hover:bg-surface"
 										>

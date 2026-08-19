@@ -31,7 +31,7 @@
 	import { lists } from '$lib/lists.svelte';
 	import { registerKeys } from '$lib/keys.svelte';
 	import { reveal } from '$lib/reveal';
-	import { toSlug } from '$lib/slug';
+	import { toMediaSlug, toSlug } from '$lib/slug';
 	import type { EpisodeSummary, TitleDetails } from '$lib/types';
 	import GenreIcon from './ui/GenreIcon.svelte';
 
@@ -44,7 +44,7 @@
 	let { title, season, episodes }: Props = $props();
 
 	const base = $derived(
-		`/${title.type === 'movie' ? 'movie' : 'show'}/${toSlug(title.tmdbId, title.title)}`
+		`/${title.type === 'movie' ? 'movie' : 'show'}/${toMediaSlug(title)}`
 	);
 
 	/* ------------------------------- смотреть -------------------------------- */

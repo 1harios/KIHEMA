@@ -1,7 +1,7 @@
-import { error } from '@sveltejs/kit';
+import { error, redirect } from '@sveltejs/kit';
 import type { PageServerLoad } from './$types';
 import { getEpisodes, getTitleBrief } from '$lib/server/catalog';
-import { parseTmdbSlug } from '$lib/slug';
+import { parseTmdbSlug, toMediaSlug } from '$lib/slug';
 
 export const load: PageServerLoad = async ({ params, url, setHeaders }) => {
 	const tmdbId = parseTmdbSlug(params.slug);
@@ -18,6 +18,10 @@ export const load: PageServerLoad = async ({ params, url, setHeaders }) => {
 		getEpisodes(tmdbId, season)
 	]);
 	if (!title) error(404, 'Сериал не найден');
+	const canonicalSlug = toMediaSlug(title);
+	if (params.slug !== canonicalSlug) {
+		redirect(308, `/show/${canonicalSlug}/watch${url.search}`);
+	}
 	const current = episodes.find((e) => e.episodeNumber === episode);
 	if (!current?.inLibrary) error(404, 'Серии нет в медиатеке');
 
@@ -30,6 +34,7 @@ export const load: PageServerLoad = async ({ params, url, setHeaders }) => {
 		target: { type: 'show' as const, tmdbId, season, episode },
 		context: {
 			title: title.title,
+			originalTitle: title.originalTitle,
 			type: 'show' as const,
 			tmdbId,
 			seasonNumber: season,
@@ -40,6 +45,6 @@ export const load: PageServerLoad = async ({ params, url, setHeaders }) => {
 				: undefined
 		},
 		art: { backdrop: title.backdrop, poster: title.poster },
-		backHref: `/show/${params.slug}?season=${season}`
+		backHref: `/show/${canonicalSlug}?season=${season}`
 	};
 };

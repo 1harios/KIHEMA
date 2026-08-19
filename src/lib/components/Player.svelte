@@ -184,6 +184,7 @@
 			tmdbId: context.tmdbId,
 			type: context.type,
 			title: context.title,
+			originalTitle: context.originalTitle,
 			poster: art?.poster,
 			backdrop: art?.backdrop,
 			season: context.seasonNumber,

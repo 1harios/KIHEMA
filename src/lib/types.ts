@@ -371,6 +371,7 @@ export interface PlaybackSource {
 
 export interface PlaybackContext {
 	title: string;
+	originalTitle?: string;
 	type: MediaType;
 	tmdbId: number;
 	seasonNumber?: number;

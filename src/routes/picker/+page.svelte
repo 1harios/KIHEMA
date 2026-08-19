@@ -24,7 +24,7 @@
 	import { DECADES, RATING_STEPS, RUNTIME_BUCKETS } from '$lib/filters';
 	import { lists } from '$lib/lists.svelte';
 	import GenreIcon from '$lib/components/ui/GenreIcon.svelte';
-	import { toSlug } from '$lib/slug';
+	import { toMediaSlug } from '$lib/slug';
 	import type { CatalogItem } from '$lib/types';
 	import type { PageData } from './$types';
 
@@ -115,7 +115,7 @@
 	}
 
 	const pickHref = $derived(
-		pick ? `/${pick.type === 'movie' ? 'movie' : 'show'}/${toSlug(pick.tmdbId, pick.title)}` : '/'
+		pick ? `/${pick.type === 'movie' ? 'movie' : 'show'}/${toMediaSlug(pick)}` : '/'
 	);
 
 	/** «Показать все» — те же условия, но на странице каталога. */

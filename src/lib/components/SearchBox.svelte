@@ -18,7 +18,7 @@
 	import { registerKeys } from '$lib/keys.svelte';
 	import { goto } from '$app/navigation';
 	import { search } from '$lib/search.svelte';
-	import { toSlug } from '$lib/slug';
+	import { toMediaSlug, toSlug } from '$lib/slug';
 	import Icon from './ui/Icon.svelte';
 	import RatingArc from './ui/RatingArc.svelte';
 
@@ -53,7 +53,7 @@
 		for (const t of search.titles) {
 			out.push({
 				kind: 'title',
-				href: `/${t.type === 'movie' ? 'movie' : 'show'}/${toSlug(t.tmdbId, t.title)}`,
+				href: `/${t.type === 'movie' ? 'movie' : 'show'}/${toMediaSlug(t)}`,
 				label: t.title
 			});
 		}
@@ -268,7 +268,7 @@
 				{#if search.titles.length}
 					<p class="eyebrow px-3 pb-1.5 pt-1">Фильмы и сериалы</p>
 					{#each search.titles as t, i (t.type + t.tmdbId)}
-						{@const href = `/${t.type === 'movie' ? 'movie' : 'show'}/${toSlug(t.tmdbId, t.title)}`}
+						{@const href = `/${t.type === 'movie' ? 'movie' : 'show'}/${toMediaSlug(t)}`}
 						<button
 							type="button"
 							role="option"

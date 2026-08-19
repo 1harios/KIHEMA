@@ -14,14 +14,14 @@
 	 */
 
 	import { progress, resumeHref, type ProgressEntry } from '$lib/progress.svelte';
-	import { toSlug } from '$lib/slug';
+	import { toMediaSlug } from '$lib/slug';
 	import Icon from './ui/Icon.svelte';
 	import RowShell from './RowShell.svelte';
 
 	const items = $derived(progress.items);
 
 	const titleHref = (e: ProgressEntry) =>
-		`/${e.type === 'movie' ? 'movie' : 'show'}/${toSlug(e.tmdbId, e.title)}`;
+		`/${e.type === 'movie' ? 'movie' : 'show'}/${toMediaSlug(e)}`;
 
 	/** Сколько осталось. Минуты, а не проценты: минуты решают, включать ли сейчас. */
 	function left(e: ProgressEntry): string {

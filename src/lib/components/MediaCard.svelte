@@ -36,7 +36,7 @@
 	 *   отличалась, из-за чего постеры в ряду стояли неровно.
 	 */
 
-	import { toSlug } from '$lib/slug';
+	import { toMediaSlug } from '$lib/slug';
 	import { lists } from '$lib/lists.svelte';
 	import { preview } from '$lib/preview.svelte';
 	import { progress } from '$lib/progress.svelte';
@@ -71,7 +71,7 @@
 	}: Props = $props();
 
 	const href = $derived(
-		`/${item.type === 'movie' ? 'movie' : 'show'}/${toSlug(item.tmdbId, item.title)}`
+		`/${item.type === 'movie' ? 'movie' : 'show'}/${toMediaSlug(item)}`
 	);
 	const playHref = $derived(resumeHref ?? `${href}/watch`);
 

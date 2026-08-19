@@ -34,7 +34,7 @@
 	import { lists } from '$lib/lists.svelte';
 	import { preview } from '$lib/preview.svelte';
 	import { progress } from '$lib/progress.svelte';
-	import { toSlug } from '$lib/slug';
+	import { toMediaSlug } from '$lib/slug';
 	import GenreIcon from './ui/GenreIcon.svelte';
 	import Icon from './ui/Icon.svelte';
 	import RatingArc from './ui/RatingArc.svelte';
@@ -57,7 +57,7 @@
 	const details = $derived(preview.details);
 
 	const href = $derived(
-		item ? `/${item.type === 'movie' ? 'movie' : 'show'}/${toSlug(item.tmdbId, item.title)}` : '/'
+		item ? `/${item.type === 'movie' ? 'movie' : 'show'}/${toMediaSlug(item)}` : '/'
 	);
 
 	const watched = $derived(item ? progress.ratioOf(item.type, item.tmdbId) : undefined);

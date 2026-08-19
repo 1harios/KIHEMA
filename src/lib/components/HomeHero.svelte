@@ -35,7 +35,7 @@
 
 	import { lists } from '$lib/lists.svelte';
 	import { logoOf, requestLogo } from '$lib/logos.svelte';
-	import { toSlug } from '$lib/slug';
+	import { toMediaSlug } from '$lib/slug';
 	import type { CatalogItem } from '$lib/types';
 	import GenreIcon from './ui/GenreIcon.svelte';
 	import Icon from './ui/Icon.svelte';
@@ -69,7 +69,7 @@
 	const hero = $derived(slides[index]);
 
 	const href = $derived(
-		hero ? `/${hero.type === 'movie' ? 'movie' : 'show'}/${toSlug(hero.tmdbId, hero.title)}` : '/'
+		hero ? `/${hero.type === 'movie' ? 'movie' : 'show'}/${toMediaSlug(hero)}` : '/'
 	);
 
 	const logo = $derived(hero ? (hero.logo ?? logoOf(hero.type, hero.tmdbId)) : null);

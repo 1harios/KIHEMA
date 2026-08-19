@@ -10,7 +10,7 @@
 
 	import Icon from '$lib/components/ui/Icon.svelte';
 	import RatingArc from '$lib/components/ui/RatingArc.svelte';
-	import { toSlug } from '$lib/slug';
+	import { toMediaSlug } from '$lib/slug';
 	import type { PageData } from './$types';
 
 	let { data }: { data: PageData } = $props();
@@ -164,7 +164,7 @@
 						></span>
 
 						<a
-							href="/movie/{toSlug(part.tmdbId, part.title)}"
+							href="/movie/{toMediaSlug(part)}"
 							class="group flex gap-4 rounded-lg border border-line-soft bg-surface/45 p-3
 							       transition hover:border-line-strong hover:bg-surface md:gap-6 md:p-4"
 						>

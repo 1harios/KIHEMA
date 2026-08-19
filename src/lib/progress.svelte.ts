@@ -31,6 +31,7 @@ export interface ProgressEntry {
 	tmdbId: number;
 	type: MediaType;
 	title: string;
+	originalTitle?: string;
 	poster?: string;
 	backdrop?: string;
 	year?: number;
@@ -141,6 +142,7 @@ export const entryToItem = (e: ProgressEntry): CatalogItem => ({
 	tmdbId: e.tmdbId,
 	type: e.type,
 	title: e.title,
+	originalTitle: e.originalTitle,
 	poster: e.poster,
 	backdrop: e.backdrop,
 	year: e.year,

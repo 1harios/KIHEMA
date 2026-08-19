@@ -232,7 +232,7 @@
 
 <!-- ======================= верхняя полоса с поиском ====================== -->
 <header
-	class="glass sticky top-0 z-40 border-b border-line-soft"
+	class="glass sticky top-0 z-40 border-b border-line-soft md:ml-[var(--rail-w)]"
 	style="padding-left: 0; padding-right: 0"
 >
 	<div class="mx-auto flex h-14 max-w-[var(--page-max)] items-center gap-3 px-[var(--gutter)] md:h-16">

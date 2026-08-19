@@ -29,8 +29,6 @@
 			/>
 		</svg>
 	{:else}
-		<!-- Screen делает чёрный фон исходника визуально прозрачным, не трогая
-		     геометрию и сглаживание утверждённой надписи. -->
 		<span
 			class="brand-wordmark block shrink-0"
 			style="--logo-size: {size}px"
@@ -44,7 +42,6 @@
 	.brand-wordmark {
 		width: calc(var(--logo-size) * 5.8);
 		height: var(--logo-size);
-		background: url('/images/kihema-wordmark-v2.png') center / 138% auto no-repeat;
-		mix-blend-mode: screen;
+		background: url('/images/kihema-wordmark-transparent-v3.png') center / contain no-repeat;
 	}
 </style>

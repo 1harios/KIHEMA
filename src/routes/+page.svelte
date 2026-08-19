@@ -49,37 +49,53 @@
 		<section class="px-[var(--gutter)] py-9 md:py-11" use:reveal>
 			<a
 				href="/picker"
-				class="group relative flex items-center gap-5 overflow-hidden rounded-lg border
-				       border-line-soft bg-surface/50 p-5 transition hover:border-line-strong md:p-7"
+				class="group relative flex min-h-[11rem] items-end overflow-hidden rounded-lg border
+				       border-line-soft bg-surface/50 p-5 transition duration-[var(--t-med)]
+				       hover:border-line-strong sm:min-h-[10rem] sm:items-center md:p-7"
 			>
-				<div class="aurora opacity-70" aria-hidden="true"></div>
+				<img
+					src="/images/picker-banner.png"
+					alt=""
+					class="absolute inset-0 h-full w-full object-cover object-[68%_50%] opacity-75 transition
+					       duration-700 group-hover:scale-[1.015] group-hover:opacity-90"
+				/>
+				<div
+					class="absolute inset-0 bg-gradient-to-r from-[#07090d] via-[#07090d]/90 to-[#07090d]/20"
+					aria-hidden="true"
+				></div>
+				<div
+					class="absolute inset-0 bg-gradient-to-t from-black/65 via-transparent to-black/10"
+					aria-hidden="true"
+				></div>
 
-				<span
-					class="relative grid h-14 w-14 shrink-0 place-items-center rounded-md border border-line
-					       bg-canvas/60 text-accent transition group-hover:scale-105 md:h-16 md:w-16"
-					style="box-shadow: var(--glow-sm)"
-				>
-					<Icon name="dice" size={28} />
-				</span>
-
-				<div class="relative min-w-0 flex-1">
-					<h2 class="mb-1 text-[15px] font-semibold tracking-tight text-ink sm:text-[17px] md:text-xl
-					       tv:text-2xl">
+				<div class="relative z-10 min-w-0 sm:max-w-[72%] lg:max-w-[58%]">
+					<span
+						class="mb-3 inline-flex items-center gap-1.5 text-[10px] font-semibold uppercase
+						       tracking-[0.16em] text-white/60 sm:text-[11px]"
+					>
+						<Icon name="dice" size={13} />
+						Подбор по настроению
+					</span>
+					<h2
+						class="mb-1.5 text-xl font-semibold tracking-tight text-ink sm:text-2xl md:text-3xl
+						       tv:text-4xl"
+					>
 						Не знаете, что смотреть?
 					</h2>
-					<p class="text-[12px] leading-relaxed text-dim sm:text-[13px] tv:text-lg">
+					<p class="max-w-2xl text-[12px] leading-relaxed text-white/60 sm:text-sm tv:text-lg">
 						Пять вопросов о настроении, времени и планке качества — и конкретный ответ вместо
 						бесконечной прокрутки.
 					</p>
-				</div>
 
-				<span
-					class="relative hidden shrink-0 items-center gap-1.5 text-sm text-accent transition
-					       group-hover:gap-2.5 sm:flex"
-				>
-					Подобрать
-					<Icon name="chevronRight" size={16} />
-				</span>
+					<span
+						class="mt-4 inline-flex h-10 items-center gap-2 rounded-full bg-accent px-5 text-sm
+						       font-semibold text-accent-ink transition group-hover:bg-accent-hover"
+						style="box-shadow: var(--glow-sm)"
+					>
+						Подобрать фильм
+						<Icon name="chevronRight" size={15} />
+					</span>
+				</div>
 			</a>
 		</section>
 

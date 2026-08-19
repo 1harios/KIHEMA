@@ -51,12 +51,12 @@
 				href="/picker"
 				class="group relative flex min-h-[11rem] items-end overflow-hidden rounded-lg border
 				       border-line-soft bg-surface/50 p-5 transition duration-[var(--t-med)]
-				       hover:border-line-strong sm:min-h-[12.5rem] sm:items-center md:p-7"
+				       hover:border-line-strong sm:min-h-[15rem] sm:items-center md:p-7"
 			>
 				<img
-					src="/images/picker-banner.png"
+					src="/images/picker-banner-v2.png"
 					alt=""
-					class="absolute inset-0 h-full w-full object-cover object-[72%_54%] opacity-90 transition
+					class="absolute inset-0 h-full w-full object-cover object-[72%_55%] opacity-90 transition
 					       duration-700 group-hover:scale-[1.01] group-hover:opacity-100"
 				/>
 				<div

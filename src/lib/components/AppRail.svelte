@@ -245,11 +245,10 @@
 		<button
 			type="button"
 			onclick={() => (mobileSearchOpen = true)}
-			class="ml-auto grid h-10 w-10 place-items-center rounded-full border border-line-soft bg-surface
-			       text-faint transition hover:border-line-strong hover:text-ink md:hidden"
+			class="ml-auto grid h-8 w-8 place-items-center text-faint transition hover:text-ink md:hidden"
 			aria-label="Открыть поиск"
 		>
-			<Icon name="search" size={18} />
+			<Icon name="search" size={19} />
 		</button>
 
 		<div class="ml-auto hidden w-full max-w-md md:block">

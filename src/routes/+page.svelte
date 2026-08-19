@@ -49,29 +49,32 @@
 		<section class="px-[var(--gutter)] py-9 md:py-11" use:reveal>
 			<a
 				href="/picker"
-				class="group relative flex min-h-[13.25rem] items-end overflow-hidden rounded-lg border
-				       border-line-soft bg-surface/50 p-5 pt-24 transition duration-[var(--t-slow)]
+				class="group relative flex min-h-[11.25rem] items-center overflow-hidden rounded-lg border
+				       border-line-soft bg-[#07090d] p-4 transition duration-[var(--t-slow)]
 				       ease-[var(--ease-smooth)]
 				       hover:border-line-strong sm:min-h-[15rem] sm:items-center sm:p-6 md:p-7"
 			>
 				<img
 					src="/images/picker-banner-v2.png"
 					alt=""
-					class="absolute inset-0 h-full w-full object-cover object-[64%_42%] opacity-100 transition
+					class="absolute inset-y-0 right-0 h-full w-[68%] object-cover object-[72%_50%] opacity-100
+					       [mask-image:linear-gradient(to_right,transparent_0%,black_38%)] transition
 					       duration-[var(--t-slower)] ease-[var(--ease-smooth)]
-					       group-hover:scale-[1.006] sm:object-[72%_55%] sm:opacity-90 group-hover:opacity-100"
+					       group-hover:scale-[1.006] sm:inset-0 sm:w-full sm:object-[72%_55%] sm:opacity-90
+					       sm:[mask-image:none] group-hover:opacity-100"
 				/>
 				<div
-					class="absolute inset-0 bg-gradient-to-t from-[#07090d] via-[#07090d]/82 to-[#07090d]/10
-					       sm:bg-gradient-to-r sm:from-[#07090d] sm:via-[#07090d]/85 sm:to-transparent"
+					class="absolute inset-0 hidden bg-gradient-to-r from-[#07090d] via-[#07090d]/85
+					       to-transparent sm:block"
 					aria-hidden="true"
 				></div>
 				<div
-					class="absolute inset-0 bg-gradient-to-t from-black/20 via-transparent to-black/10 sm:from-black/35 sm:to-black/5"
+					class="absolute inset-0 bg-gradient-to-r from-[#07090d] via-[#07090d]/30 to-transparent
+					       sm:bg-gradient-to-t sm:from-black/35 sm:via-transparent sm:to-black/5"
 					aria-hidden="true"
 				></div>
 
-				<div class="relative z-10 min-w-0 sm:max-w-[72%] lg:max-w-[58%]">
+				<div class="relative z-10 min-w-0 max-w-[76%] sm:max-w-[72%] lg:max-w-[58%]">
 					<span
 						class="mb-2 inline-flex items-center gap-1.5 text-[10px] font-semibold uppercase
 						       tracking-[0.16em] text-white/60 sm:text-[11px]"
@@ -79,10 +82,10 @@
 						<Icon name="dice" size={13} />
 						Подбор по настроению
 					</span>
-					<h2 class="mb-1.5 text-xl font-semibold tracking-tight text-ink sm:text-2xl md:text-[28px]">
+					<h2 class="mb-1.5 text-[19px] font-semibold leading-tight tracking-tight text-ink sm:text-2xl md:text-[28px]">
 						Не знаете, что смотреть?
 					</h2>
-					<p class="max-w-3xl text-[12px] leading-relaxed text-white/65 sm:text-sm">
+					<p class="max-w-[15rem] text-[11.5px] leading-relaxed text-white/65 sm:max-w-3xl sm:text-sm">
 						Ответьте на пять вопросов — и получите фильм под настроение, время и нужное качество.
 					</p>
 

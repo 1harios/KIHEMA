@@ -51,20 +51,20 @@
 				href="/picker"
 				class="group relative flex min-h-[11rem] items-end overflow-hidden rounded-lg border
 				       border-line-soft bg-surface/50 p-5 transition duration-[var(--t-med)]
-				       hover:border-line-strong sm:min-h-[10rem] sm:items-center md:p-7"
+				       hover:border-line-strong sm:min-h-[12.5rem] sm:items-center md:p-7"
 			>
 				<img
 					src="/images/picker-banner.png"
 					alt=""
-					class="absolute inset-0 h-full w-full object-cover object-[68%_50%] opacity-75 transition
-					       duration-700 group-hover:scale-[1.015] group-hover:opacity-90"
+					class="absolute inset-0 h-full w-full object-cover object-[72%_54%] opacity-90 transition
+					       duration-700 group-hover:scale-[1.01] group-hover:opacity-100"
 				/>
 				<div
-					class="absolute inset-0 bg-gradient-to-r from-[#07090d] via-[#07090d]/90 to-[#07090d]/20"
+					class="absolute inset-0 bg-gradient-to-r from-[#07090d] via-[#07090d]/85 to-transparent"
 					aria-hidden="true"
 				></div>
 				<div
-					class="absolute inset-0 bg-gradient-to-t from-black/65 via-transparent to-black/10"
+					class="absolute inset-0 bg-gradient-to-t from-black/35 via-transparent to-black/5"
 					aria-hidden="true"
 				></div>
 
@@ -76,19 +76,15 @@
 						<Icon name="dice" size={13} />
 						Подбор по настроению
 					</span>
-					<h2
-						class="mb-1.5 text-xl font-semibold tracking-tight text-ink sm:text-2xl md:text-3xl
-						       tv:text-4xl"
-					>
+					<h2 class="mb-1.5 text-xl font-semibold tracking-tight text-ink sm:text-2xl md:text-[28px]">
 						Не знаете, что смотреть?
 					</h2>
-					<p class="max-w-2xl text-[12px] leading-relaxed text-white/60 sm:text-sm tv:text-lg">
-						Пять вопросов о настроении, времени и планке качества — и конкретный ответ вместо
-						бесконечной прокрутки.
+					<p class="max-w-3xl text-[12px] leading-relaxed text-white/65 sm:text-sm">
+						Ответьте на пять вопросов — и получите фильм под настроение, время и нужное качество.
 					</p>
 
 					<span
-						class="mt-4 inline-flex h-10 items-center gap-2 rounded-full bg-accent px-5 text-sm
+						class="mt-4 inline-flex h-9 items-center gap-2 rounded-full bg-accent px-4.5 text-[13px]
 						       font-semibold text-accent-ink transition group-hover:bg-accent-hover"
 						style="box-shadow: var(--glow-sm)"
 					>

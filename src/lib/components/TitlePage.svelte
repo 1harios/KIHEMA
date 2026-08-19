@@ -389,15 +389,6 @@
 								<Icon name="check" size={12} />
 								В медиатеке
 							</span>
-						{:else if title.inLibrary}
-							<span
-								class="inline-flex items-center gap-1.5 rounded-full border border-accent/40
-								       bg-accent-soft px-2.5 py-1 text-[11.5px] font-medium text-accent
-								       backdrop-blur-sm"
-							>
-								<Icon name="play" size={11} />
-								Онлайн
-							</span>
 						{/if}
 					</div>
 
@@ -405,11 +396,11 @@
 						<img
 							src={title.logo}
 							alt={title.title}
-							class="mb-4 max-h-20 w-auto max-w-[min(26rem,90%)] object-contain object-left
+							class="mb-2 max-h-20 w-auto max-w-[min(26rem,90%)] object-contain object-left
 							       drop-shadow-[0_6px_22px_rgba(0,0,0,0.7)] md:max-h-28 tv:max-h-44"
 						/>
-						<!-- Название текстом всё равно нужно скринридерам и поиску. -->
-						<h1 class="sr-only">{title.title}</h1>
+						<!-- На телефоне логотипу помогает текстовое название: его проще прочитать. -->
+						<h1 class="display-lg mb-1 text-3xl text-ink md:sr-only">{title.title}</h1>
 					{:else}
 						<h1 class="display-lg mb-3 text-3xl text-ink md:text-5xl tv:text-7xl">{title.title}</h1>
 					{/if}

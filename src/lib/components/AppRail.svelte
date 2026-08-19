@@ -48,6 +48,7 @@
 		href === '/' ? page.url.pathname === '/' : page.url.pathname.startsWith(href);
 
 	const savedCount = $derived(lists.count('later') + lists.count('favorite'));
+	let mobileSearchOpen = $state(false);
 
 	async function applyTheme(next: Theme) {
 		picked = next;
@@ -241,11 +242,56 @@
 			<Logo size={24} />
 		</a>
 
-		<div class="ml-auto w-full max-w-md">
+		<button
+			type="button"
+			onclick={() => (mobileSearchOpen = true)}
+			class="ml-auto grid h-10 w-10 place-items-center rounded-full border border-line-soft bg-surface
+			       text-faint transition hover:border-line-strong hover:text-ink md:hidden"
+			aria-label="Открыть поиск"
+		>
+			<Icon name="search" size={18} />
+		</button>
+
+		<div class="ml-auto hidden w-full max-w-md md:block">
 			<SearchBox />
 		</div>
 	</div>
 </header>
+
+{#if mobileSearchOpen}
+	<div
+		class="fixed inset-0 z-[70] md:hidden"
+		role="dialog"
+		aria-modal="true"
+		aria-label="Поиск по каталогу"
+		tabindex="-1"
+	>
+		<button
+			type="button"
+			class="absolute inset-0 bg-black/70 backdrop-blur-sm"
+			onclick={() => (mobileSearchOpen = false)}
+			aria-label="Закрыть поиск"
+		></button>
+		<div
+			class="relative border-b border-line bg-elev px-[var(--gutter)] pb-5 pt-[max(1rem,env(safe-area-inset-top))]"
+		>
+			<div class="flex items-center gap-3">
+				<div class="min-w-0 flex-1">
+					<SearchBox autofocus onEscape={() => (mobileSearchOpen = false)} />
+				</div>
+				<button
+					type="button"
+					onclick={() => (mobileSearchOpen = false)}
+					class="grid h-10 w-10 shrink-0 place-items-center rounded-full text-faint transition
+					       hover:bg-surface hover:text-ink"
+					aria-label="Закрыть поиск"
+				>
+					<Icon name="close" size={19} />
+				</button>
+			</div>
+		</div>
+	</div>
+{/if}
 
 <!-- ========================= таб-бар (< md) ============================= -->
 <nav

@@ -22,6 +22,14 @@
 	import Icon from './ui/Icon.svelte';
 	import RatingArc from './ui/RatingArc.svelte';
 
+	interface Props {
+		/** Нужен для мобильного слоя поиска: курсор сразу в поле после открытия. */
+		autofocus?: boolean;
+		onEscape?: () => void;
+	}
+
+	let { autofocus = false, onEscape }: Props = $props();
+
 	let open = $state(false);
 	let focused = $state(false);
 	let activeIndex = $state(-1);
@@ -72,6 +80,10 @@
 		search.init();
 	});
 
+	$effect(() => {
+		if (autofocus) queueMicrotask(() => input?.focus());
+	});
+
 	// Новая строка — выделение сбрасывается: иначе Enter откроет не то.
 	$effect(() => {
 		search.query;
@@ -101,6 +113,7 @@
 			// поведение, за которое пользователи ненавидят живой поиск.
 			open = false;
 			activeIndex = -1;
+			onEscape?.();
 			return;
 		}
 

@@ -49,30 +49,31 @@
 		<section class="px-[var(--gutter)] py-9 md:py-11" use:reveal>
 			<a
 				href="/picker"
-				class="group relative flex min-h-[11rem] items-end overflow-hidden rounded-lg border
-				       border-line-soft bg-surface/50 p-5 transition duration-[var(--t-slow)]
+				class="group relative flex min-h-[13.25rem] items-end overflow-hidden rounded-lg border
+				       border-line-soft bg-surface/50 p-5 pt-24 transition duration-[var(--t-slow)]
 				       ease-[var(--ease-smooth)]
-				       hover:border-line-strong sm:min-h-[15rem] sm:items-center md:p-7"
+				       hover:border-line-strong sm:min-h-[15rem] sm:items-center sm:p-6 md:p-7"
 			>
 				<img
 					src="/images/picker-banner-v2.png"
 					alt=""
-					class="absolute inset-0 h-full w-full object-cover object-[72%_55%] opacity-90 transition
+					class="absolute inset-0 h-full w-full object-cover object-[64%_42%] opacity-100 transition
 					       duration-[var(--t-slower)] ease-[var(--ease-smooth)]
-					       group-hover:scale-[1.006] group-hover:opacity-100"
+					       group-hover:scale-[1.006] sm:object-[72%_55%] sm:opacity-90 group-hover:opacity-100"
 				/>
 				<div
-					class="absolute inset-0 bg-gradient-to-r from-[#07090d] via-[#07090d]/85 to-transparent"
+					class="absolute inset-0 bg-gradient-to-t from-[#07090d] via-[#07090d]/82 to-[#07090d]/10
+					       sm:bg-gradient-to-r sm:from-[#07090d] sm:via-[#07090d]/85 sm:to-transparent"
 					aria-hidden="true"
 				></div>
 				<div
-					class="absolute inset-0 bg-gradient-to-t from-black/35 via-transparent to-black/5"
+					class="absolute inset-0 bg-gradient-to-t from-black/20 via-transparent to-black/10 sm:from-black/35 sm:to-black/5"
 					aria-hidden="true"
 				></div>
 
 				<div class="relative z-10 min-w-0 sm:max-w-[72%] lg:max-w-[58%]">
 					<span
-						class="mb-3 inline-flex items-center gap-1.5 text-[10px] font-semibold uppercase
+						class="mb-2 inline-flex items-center gap-1.5 text-[10px] font-semibold uppercase
 						       tracking-[0.16em] text-white/60 sm:text-[11px]"
 					>
 						<Icon name="dice" size={13} />
@@ -86,7 +87,7 @@
 					</p>
 
 					<span
-						class="mt-4 inline-flex h-9 items-center gap-2 rounded-full bg-accent px-4.5 text-[13px]
+						class="mt-3 inline-flex h-9 items-center gap-2 rounded-full bg-accent px-4.5 text-[13px]
 						       font-semibold text-accent-ink transition group-hover:bg-accent-hover"
 						style="box-shadow: var(--glow-sm)"
 					>

@@ -2,6 +2,7 @@ import { error, json, type RequestHandler } from '@sveltejs/kit';
 import { archivePlaybackSource, findArchiveFilm } from '$lib/server/archive';
 import { config as siteConfig, jellyfinAnon, libraryIndex } from '$lib/server/config';
 import { DEMO_SEGMENTS, DEMO_STREAMS, DEMO_TRANSLATIONS } from '$lib/server/demo-data';
+import { getIntroDbSegments, mergeMediaSegments } from '$lib/server/introdb';
 import { readSession } from '$lib/server/session';
 import { scrapePlaybackSource, type ScrapeResult } from '$lib/server/sources/lightstream';
 import type { MediaType, PlaybackSource } from '$lib/types';
@@ -44,6 +45,9 @@ export const POST: RequestHandler = async ({ request, cookies }) => {
 	};
 
 	if (!body?.tmdbId || !body?.type) error(400, 'Не переданы type и tmdbId');
+	if (body.type === 'show' && (body.season == null || body.episode == null)) {
+		error(400, 'Для сериала нужны season и episode');
+	}
 
 	/* ------------------------------ демо-режим ------------------------------ */
 	if (siteConfig.demoMode) {
@@ -67,12 +71,29 @@ export const POST: RequestHandler = async ({ request, cookies }) => {
 		return json(source);
 	}
 
+	// Запускаем запрос одновременно с поиском потока, чтобы таймкоды почти не
+	// увеличивали время открытия плеера. Сбой TheIntroDB не отменяет просмотр.
+	const introSegmentsPromise = getIntroDbSegments({
+		type: body.type,
+		tmdbId: body.tmdbId,
+		season: body.season,
+		episode: body.episode
+	});
+	const withIntroSegments = async (source: PlaybackSource): Promise<PlaybackSource> => ({
+		...source,
+		segments: mergeMediaSegments(source.segments, await introSegmentsPromise)
+	});
+
 	/* --------------------------- Internet Archive --------------------------- */
 	// Проверяем до Jellyfin и до проверки сессии: это открытый контент,
 	// логин для него не нужен.
 	if (body.type === 'movie') {
 		const film = findArchiveFilm(body.tmdbId);
-		if (film) return json({ ...archivePlaybackSource(film), provider: 'archive' });
+		if (film) {
+			return json(
+				await withIntroSegments({ ...archivePlaybackSource(film), provider: 'archive' })
+			);
+		}
 	}
 
 	/* ------------------------- собственная медиатека ------------------------ */
@@ -96,7 +117,7 @@ export const POST: RequestHandler = async ({ request, cookies }) => {
 				startPositionSec: body.startPositionSec,
 				mediaToken: session.jellyfinToken
 			});
-			return json({ ...source, provider: 'jellyfin' });
+			return json(await withIntroSegments({ ...source, provider: 'jellyfin' }));
 		} catch (e) {
 			// Jellyfin моргнул — ниже попробуем CDN, это лучше, чем обломиться.
 			console.error(
@@ -107,12 +128,8 @@ export const POST: RequestHandler = async ({ request, cookies }) => {
 	}
 
 	/* ------------------------------ CDN-скраперы ----------------------------- */
-	if (body.type === 'show' && (body.season == null || body.episode == null)) {
-		error(400, 'Для сериала нужны season и episode');
-	}
-
 	const scraped = await tryScrape(body.type, body.tmdbId, body.season, body.episode);
-	if (scraped.source) return json(scraped.source);
+	if (scraped.source) return json(await withIntroSegments(scraped.source));
 
 	/* ----------------------------- понятные ошибки --------------------------- */
 	if (itemId && !session && jellyfinAnon) error(401, 'Нужно войти');

@@ -48,6 +48,14 @@ export const config = {
 	/** Как часто пересобирать индекс библиотеки, в минутах. */
 	indexRefreshMinutes: Number.parseInt(envOr(env.INDEX_REFRESH_MINUTES, '60'), 10),
 
+	/* ----------------------- заставки и титры TheIntroDB ---------------------- */
+	introDb: {
+		// Публичные таймкоды доступны без ключа; интеграцию можно отключить явно.
+		enabled: env.INTRODB_ENABLED !== 'false',
+		baseUrl: envOr(env.INTRODB_API_URL, 'https://api.theintrodb.org'),
+		apiKey: (env.INTRODB_API_KEY ?? '').trim()
+	},
+
 	/* ------------------------------ CDN-скраперы ----------------------------- */
 	/*
 	 * Внешний резолвер потоков по TMDB ID (источники cobalt / titan / carbon).

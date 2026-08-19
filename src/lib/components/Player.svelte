@@ -523,9 +523,18 @@
 		player.source?.subtitles.find((s) => s.id === player.activeSubtitleId)
 	);
 
-	const segmentLabel = $derived(
-		player.activeSegment?.type === 'Outro' ? 'Пропустить титры' : 'Пропустить заставку'
-	);
+	const segmentLabel = $derived.by(() => {
+		switch (player.activeSegment?.type) {
+			case 'Outro':
+				return 'Пропустить титры';
+			case 'Recap':
+				return 'Пропустить повтор';
+			case 'Preview':
+				return 'Пропустить анонс';
+			default:
+				return 'Пропустить заставку';
+		}
+	});
 
 	/* ------------------------------ подписи ------------------------------- */
 
@@ -922,11 +931,15 @@
 
 					<!-- Отметки заставки и титров -->
 					{#each player.source?.segments ?? [] as seg (seg.startSec)}
-						{#if player.duration}
+						{#if player.duration && seg.startSec < player.duration}
 							<div
 								class="absolute inset-y-0 bg-warn/45"
 								style="left: {(seg.startSec / player.duration) * 100}%;
-								       width: {((seg.endSec - seg.startSec) / player.duration) * 100}%"
+								       width: {(Math.max(
+										0,
+										Math.min(seg.endSec, player.duration) - seg.startSec
+									) /
+										player.duration) * 100}%"
 								title={seg.type === 'Outro' ? 'Титры' : 'Заставка'}
 							></div>
 						{/if}

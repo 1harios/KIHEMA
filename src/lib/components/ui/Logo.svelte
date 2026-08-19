@@ -1,17 +1,7 @@
 <script lang="ts">
-	/**
-	 * Знак и логотип КИНЕМА.
-	 *
-	 * Знак — кадр плёнки со световым лучом проектора. Читается на 20px: снаружи
-	 * только скруглённый контур, внутри одна диагональ. Всё в currentColor, чтобы
-	 * знак жил в любой теме без отдельных вариантов.
-	 *
-	 * Слово набирается display-гарнитурой с положительным трекингом — в капсах
-	 * кириллица без разрядки выглядит сжатой.
-	 */
-
+	/** Логотип КИНЕМА и компактный знак на основе центральной буквы Н. */
 	interface Props {
-		/** Только знак — для рельса и мобильной шапки. */
+		/** Только знак — для рельса и компактных поверхностей. */
 		markOnly?: boolean;
 		size?: number;
 		class?: string;
@@ -19,45 +9,28 @@
 
 	let { markOnly = false, size = 26, class: cls = '' }: Props = $props();
 
-	// Уникальный id клипа: два логотипа на странице с одним id ломают второй.
-	const uid = `logo-${Math.random().toString(36).slice(2, 8)}`;
 </script>
 
-<span class="inline-flex items-center {cls}">
+<span class="inline-flex items-center text-accent {cls}">
 	{#if markOnly}
 		<svg
 			viewBox="0 0 32 32"
 			width={size}
 			height={size}
-			class="shrink-0 text-accent"
+			class="shrink-0"
 			aria-hidden="true"
 			focusable="false"
 		>
-			<defs>
-				<clipPath id={uid}>
-					<rect x="3" y="3" width="26" height="26" rx="8.5" />
-				</clipPath>
-			</defs>
-
-			<g clip-path="url(#{uid})">
-				<!-- Луч: две полосы разной плотности — так он читается как свет, а не
-				     как декоративная диагональ. -->
-				<path d="M -3 21 L 14 -3 L 25 -3 L 8 21 Z" fill="currentColor" opacity="0.5" />
-				<path d="M 5 33 L 22 9 L 28 9 L 11 33 Z" fill="currentColor" opacity="0.15" />
-			</g>
-
-			<rect
-				x="4.2"
-				y="4.2"
-				width="23.6"
-				height="23.6"
-				rx="7.4"
-				fill="none"
-				stroke="currentColor"
-				stroke-width="2.3"
+			<!-- Центральная Н из фирменной надписи: экран и две монтажные прорези. -->
+			<path
+				fill="currentColor"
+				fill-rule="evenodd"
+				d="M5 4h22v24H5V4Zm8 0h6v3c0 1.1-.9 2-2 2h-2c-1.1 0-2-.9-2-2V4Zm-.5 7h7c.83 0 1.5.67 1.5 1.5v7c0 .83-.67 1.5-1.5 1.5h-7c-.83 0-1.5-.67-1.5-1.5v-7c0-.83.67-1.5 1.5-1.5ZM13 28h6v-3c0-1.1-.9-2-2-2h-2c-1.1 0-2 .9-2 2v3Z"
 			/>
 		</svg>
 	{:else}
+		<!-- Screen делает чёрный фон исходника визуально прозрачным, не трогая
+		     геометрию и сглаживание утверждённой надписи. -->
 		<span
 			class="brand-wordmark block shrink-0"
 			style="--logo-size: {size}px"
@@ -72,7 +45,6 @@
 		width: calc(var(--logo-size) * 5.8);
 		height: var(--logo-size);
 		background: url('/images/kihema-wordmark-v2.png') center / 138% auto no-repeat;
-		/* Чёрный фон PNG растворяется в тёмной поверхности, белый знак сохраняется. */
 		mix-blend-mode: screen;
 	}
 </style>

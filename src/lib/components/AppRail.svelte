@@ -236,8 +236,8 @@
 	style="padding-left: 0; padding-right: 0"
 >
 	<div class="mx-auto flex h-14 max-w-[var(--page-max)] items-center gap-3 px-[var(--gutter)] md:h-16">
-		<!-- Логотип в полосе только на мобильном: в рельсе он уже есть -->
-		<a href="/" class="shrink-0 md:hidden" aria-label="КИНЕМА — на главную">
+		<!-- Полная надпись остаётся в шапке и на ПК; рельс использует компактный знак. -->
+		<a href="/" class="shrink-0" aria-label="КИНЕМА — на главную">
 			<Logo size={24} />
 		</a>
 

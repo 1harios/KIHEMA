@@ -91,7 +91,7 @@
 <!-- ============================ рельс (>= md) ============================ -->
 <nav
 	class="glass fixed inset-y-0 left-0 z-50 hidden w-[var(--rail-w)] flex-col items-center
-	       border-r border-line-soft py-4 md:flex"
+	       border-r border-line-soft pb-4 pt-2.5 md:flex"
 	aria-label="Основная навигация"
 >
 	<a

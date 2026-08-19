@@ -293,7 +293,8 @@
 		</div>
 
 		<div
-			class="relative mx-auto max-w-[var(--page-max)] px-[var(--gutter)] pb-12 pt-24 md:pt-32"
+			class="relative mx-auto max-w-[var(--page-max)] px-[var(--gutter)] pb-9 pt-20
+			       sm:pb-12 sm:pt-24 md:pt-32"
 		>
 			<!--
 				md:items-end — колонка с рейтингом, жанрами и кнопками выравнивается по
@@ -301,7 +302,7 @@
 				заканчивалась заметно выше постера: две несвязанные плиты вместо одного
 				блока. Нижняя линия общая — блок читается целиком.
 			-->
-			<div class="flex flex-col gap-7 md:flex-row md:items-end md:gap-10">
+			<div class="flex flex-col gap-5 sm:gap-7 md:flex-row md:items-end md:gap-10">
 				<!-- Постер -->
 				<div class="w-32 shrink-0 sm:w-40 md:w-60 tv:w-80">
 					<div class="overflow-hidden rounded-md shadow-4 ring-1 ring-white/10">
@@ -333,7 +334,7 @@
 						своя тёмная подложка, поэтому он читается на любом кадре, а иконка
 						даёт различать факты не читая: часы — длительность, календарь — год.
 					-->
-					<div class="mb-5 flex flex-wrap items-center gap-2">
+					<div class="mb-4 flex flex-wrap items-center gap-2 sm:mb-5">
 						<span
 							class="inline-flex items-center gap-1.5 rounded-full bg-accent px-2.5 py-1
 							       text-[11px] font-semibold uppercase tracking-wider text-accent-ink
@@ -418,7 +419,7 @@
 					{/if}
 
 
-					<div class="mb-7 flex flex-wrap items-center gap-x-5 gap-y-3">
+					<div class="mb-5 flex flex-wrap items-center gap-x-5 gap-y-3 sm:mb-7">
 						{#if title.rating}
 							<div class="flex items-center gap-2.5">
 								<RatingArc value={title.rating} votes={title.votes} size={52} />
@@ -457,14 +458,19 @@
 						{/if}
 					</div>
 
-					<!-- Действия -->
-					<div class="flex flex-wrap items-center gap-2.5">
+					<!--
+						На телефоне действия собраны в два предсказуемых ряда: просмотр на всю
+						ширину, вторичные действия ниже. Обычный flex-wrap отправлял последнюю
+						кнопку («Избранное») на отдельную строку, где она выглядела случайной.
+					-->
+					<div class="space-y-2.5 sm:flex sm:flex-wrap sm:items-center sm:gap-2.5 sm:space-y-0">
 						{#if canWatch && watchHref}
 							<a
 								href={watchHref}
-								class="inline-flex h-12 items-center gap-2.5 rounded-full bg-accent px-7 text-sm
+								class="inline-flex h-12 w-full items-center justify-center gap-2.5 rounded-xl
+								       bg-accent px-7 text-sm
 								       font-semibold text-accent-ink transition duration-[var(--t-fast)]
-								       hover:bg-accent-hover tv:h-16 tv:px-10 tv:text-lg"
+								       hover:bg-accent-hover sm:w-auto sm:rounded-full tv:h-16 tv:px-10 tv:text-lg"
 								style="box-shadow: var(--glow-md)"
 							>
 								<Icon name="play" size={16} />
@@ -477,8 +483,9 @@
 								источник воспроизведения просто не подключён.
 							-->
 							<div
-								class="inline-flex h-12 items-center gap-2.5 rounded-full border border-white/20
-								       bg-black/45 px-7 text-sm text-white/70 backdrop-blur-md"
+								class="inline-flex h-12 w-full items-center justify-center gap-2.5 rounded-xl border
+								       border-white/20 bg-black/45 px-7 text-sm text-white/70 backdrop-blur-md
+								       sm:w-auto sm:rounded-full"
 								title={unavailableHint}
 							>
 								<Icon name="info" size={16} />
@@ -486,44 +493,57 @@
 							</div>
 						{/if}
 
-						{#if title.trailerKey}
+						<div
+							class="grid gap-2 {title.trailerKey ? 'grid-cols-3' : 'grid-cols-2'}
+							       sm:flex sm:gap-2.5"
+						>
+							{#if title.trailerKey}
+								<button
+									type="button"
+									onclick={() => (trailerOpen = true)}
+									class="inline-flex h-11 min-w-0 items-center justify-center gap-1.5 rounded-xl
+									       border border-white/20 bg-black/45 px-2 text-[11.5px] font-medium
+									       text-white backdrop-blur-md transition duration-[var(--t-fast)]
+									       hover:border-white/40 hover:bg-black/70 sm:h-12 sm:rounded-full
+									       sm:px-6 sm:text-sm"
+								>
+									<Icon name="play" size={13} />
+									Трейлер
+								</button>
+							{/if}
+
 							<button
 								type="button"
-								onclick={() => (trailerOpen = true)}
-								class="inline-flex h-12 items-center gap-2 rounded-full border border-white/20
-								       bg-black/45 px-6 text-sm font-medium text-white backdrop-blur-md transition
-								       duration-[var(--t-fast)] hover:border-white/40 hover:bg-black/70"
+								onclick={() => lists.toggle('later', title)}
+								aria-pressed={inLater}
+								title={inLater ? 'Убрать из «Смотреть позже»' : 'Смотреть позже'}
+								class="inline-flex h-11 min-w-0 items-center justify-center gap-1.5 rounded-xl
+								       border px-2 text-[11.5px] font-medium backdrop-blur-md transition
+								       duration-[var(--t-fast)] sm:grid sm:h-12 sm:w-12 sm:place-items-center
+								       sm:rounded-full sm:px-0 tv:h-16 tv:w-16 {inLater
+									? 'border-accent bg-accent text-accent-ink'
+									: 'border-white/20 bg-black/45 text-white hover:border-white/40'}"
 							>
-								<Icon name="play" size={14} />
-								Трейлер
+								<Icon name={inLater ? 'check' : 'bookmark'} size={16} />
+								<span class="sm:hidden">{inLater ? 'Добавлено' : 'Позже'}</span>
 							</button>
-						{/if}
 
-						<button
-							type="button"
-							onclick={() => lists.toggle('later', title)}
-							aria-pressed={inLater}
-							title={inLater ? 'Убрать из «Смотреть позже»' : 'Смотреть позже'}
-							class="grid h-12 w-12 place-items-center rounded-full border backdrop-blur-md
-							       transition duration-[var(--t-fast)] tv:h-16 tv:w-16 {inLater
-								? 'border-accent bg-accent text-accent-ink'
-								: 'border-white/20 bg-black/45 text-white hover:border-white/40'}"
-						>
-							<Icon name={inLater ? 'check' : 'bookmark'} size={17} />
-						</button>
-
-						<button
-							type="button"
-							onclick={() => lists.toggle('favorite', title)}
-							aria-pressed={inFav}
-							title={inFav ? 'Убрать из избранного' : 'В избранное'}
-							class="grid h-12 w-12 place-items-center rounded-full border backdrop-blur-md
-							       transition duration-[var(--t-fast)] tv:h-16 tv:w-16 {inFav
-								? 'border-accent bg-accent text-accent-ink'
-								: 'border-white/20 bg-black/45 text-white hover:border-white/40'}"
-						>
-							<Icon name="heart" size={17} filled={inFav} />
-						</button>
+							<button
+								type="button"
+								onclick={() => lists.toggle('favorite', title)}
+								aria-pressed={inFav}
+								title={inFav ? 'Убрать из избранного' : 'В избранное'}
+								class="inline-flex h-11 min-w-0 items-center justify-center gap-1.5 rounded-xl
+								       border px-2 text-[11.5px] font-medium backdrop-blur-md transition
+								       duration-[var(--t-fast)] sm:grid sm:h-12 sm:w-12 sm:place-items-center
+								       sm:rounded-full sm:px-0 tv:h-16 tv:w-16 {inFav
+									? 'border-accent bg-accent text-accent-ink'
+									: 'border-white/20 bg-black/45 text-white hover:border-white/40'}"
+							>
+								<Icon name="heart" size={16} filled={inFav} />
+								<span class="sm:hidden">{inFav ? 'В избранном' : 'Избранное'}</span>
+							</button>
+						</div>
 					</div>
 				</div>
 			</div>

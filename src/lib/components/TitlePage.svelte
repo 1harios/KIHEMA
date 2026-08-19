@@ -296,10 +296,18 @@
 			class="relative mx-auto max-w-[var(--page-max)] px-[var(--gutter)] pb-9 pt-20
 			       sm:pb-12 sm:pt-24 md:pt-32"
 		>
-			<!-- На широком экране текст начинается на одной высоте с постером. -->
-			<div class="flex flex-col gap-5 sm:gap-7 md:flex-row md:items-start md:gap-10">
+			<!--
+				На телефоне постер и опознавательная информация делят первый ряд, чтобы
+				не оставлять справа от постера пустой экран. Рейтинг, жанры и действия
+				после него снова занимают всю ширину. На широком экране это две колонки.
+			-->
+			<div
+				class="grid grid-cols-[7.25rem_minmax(0,1fr)] items-start gap-x-4 gap-y-5
+				       sm:grid-cols-[10rem_minmax(0,1fr)] sm:gap-x-7 md:grid-cols-[15rem_minmax(0,1fr)]
+				       md:gap-10 tv:grid-cols-[20rem_minmax(0,1fr)]"
+			>
 				<!-- Постер -->
-				<div class="w-32 shrink-0 sm:w-40 md:w-60 tv:w-80">
+				<div class="w-full min-w-0">
 					<div class="overflow-hidden rounded-md shadow-4 ring-1 ring-white/10">
 						{#if title.poster}
 							<img src={title.poster} alt="" class="aspect-[2/3] w-full object-cover" />
@@ -323,7 +331,8 @@
 				</div>
 
 				<!-- Опознавательный блок -->
-				<div class="min-w-0 flex-1">
+				<div class="contents md:block">
+					<div class="col-start-2 row-start-1 min-w-0 self-start">
 					<!--
 						Факты чипсами с иконками, а не серой строкой через точку. У чипса
 						своя тёмная подложка, поэтому он читается на любом кадре, а иконка
@@ -395,7 +404,7 @@
 							       drop-shadow-[0_6px_22px_rgba(0,0,0,0.7)] md:max-h-28 tv:max-h-44"
 						/>
 						<!-- На телефоне логотипу помогает текстовое название: его проще прочитать. -->
-						<h1 class="display-lg mb-1 text-3xl text-ink md:sr-only">{title.title}</h1>
+						<h1 class="display-lg mb-1 text-2xl text-ink sm:text-3xl md:sr-only">{title.title}</h1>
 					{:else}
 						<h1 class="display-lg mb-3 text-3xl text-ink md:text-5xl tv:text-7xl">{title.title}</h1>
 					{/if}
@@ -403,9 +412,12 @@
 					{#if title.originalTitle && title.originalTitle !== title.title}
 						<p class="mb-3 text-[13px] text-white/55 tv:text-lg">{title.originalTitle}</p>
 					{/if}
+					</div>
 
 
-					<div class="mb-5 flex flex-wrap items-center gap-x-5 gap-y-3 sm:mb-7">
+					<div
+						class="col-span-2 mb-0 flex flex-wrap items-center gap-x-5 gap-y-3 md:mb-7"
+					>
 						{#if title.rating}
 							<div class="flex items-center gap-2.5">
 								<RatingArc value={title.rating} votes={title.votes} size={52} />
@@ -449,7 +461,10 @@
 						ширину, вторичные действия ниже. Обычный flex-wrap отправлял последнюю
 						кнопку («Избранное») на отдельную строку, где она выглядела случайной.
 					-->
-					<div class="space-y-2.5 sm:flex sm:flex-wrap sm:items-center sm:gap-2.5 sm:space-y-0">
+					<div
+						class="col-span-2 space-y-2.5 sm:flex sm:flex-wrap sm:items-center sm:gap-2.5
+						       sm:space-y-0"
+					>
 						{#if canWatch && watchHref}
 							<a
 								href={watchHref}

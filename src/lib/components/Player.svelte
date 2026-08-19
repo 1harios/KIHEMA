@@ -54,6 +54,23 @@
 	let settingsOpen = $state(false);
 	let isFullscreen = $state(false);
 	let hideTimer: ReturnType<typeof setTimeout> | null = null;
+	let loadingStep = $state(0);
+
+	const LOADING_STEPS = ['Ищем источник', 'Проверяем поток', 'Готовим воспроизведение'];
+	const loadingLabel = $derived(
+		player.status === 'switching' ? 'Меняем озвучку' : LOADING_STEPS[loadingStep]
+	);
+
+	$effect(() => {
+		if (player.status !== 'loading') {
+			loadingStep = 0;
+			return;
+		}
+		const id = setInterval(() => {
+			loadingStep = (loadingStep + 1) % LOADING_STEPS.length;
+		}, 1800);
+		return () => clearInterval(id);
+	});
 
 	/**
 	 * Всплывающая подсказка перемотки: «−10 сек» / «+10 сек».
@@ -666,7 +683,7 @@
 				<img
 					src={art.backdrop}
 					alt=""
-					class="h-full w-full scale-105 object-cover opacity-40 blur-xl"
+					class="loading-backdrop h-full w-full scale-105 object-cover opacity-40 blur-xl"
 				/>
 			{/if}
 			<div class="absolute inset-0 bg-canvas/75"></div>
@@ -674,11 +691,16 @@
 			<div class="absolute inset-0 grid place-items-center px-6">
 				<div class="flex max-w-md flex-col items-center text-center">
 					{#if art?.poster}
-						<img
-							src={art.poster}
-							alt=""
-							class="mb-6 h-40 w-auto rounded-md shadow-4 ring-1 ring-white/10"
-						/>
+						<div class="loading-poster-wrap mb-6">
+							<span class="loading-orbit" aria-hidden="true"></span>
+							<span class="loading-orbit loading-orbit-secondary" aria-hidden="true"></span>
+							<img
+								src={art.poster}
+								alt=""
+								class="loading-poster h-40 w-auto rounded-md shadow-4 ring-1 ring-white/10"
+							/>
+							<span class="loading-sheen" aria-hidden="true"></span>
+						</div>
 					{/if}
 
 					<p class="mb-4 font-display text-lg text-ink">{heading}</p>
@@ -686,12 +708,18 @@
 					<div class="mb-3 h-[3px] w-44 overflow-hidden rounded-full bg-white/12">
 						<!-- Полоса неопределённого прогресса: сколько ждать, мы не знаем,
 						     а честный индикатор лучше врущего процента. -->
-						<div class="h-full w-1/3 animate-[indeterminate_1.3s_ease-in-out_infinite] bg-accent"
-						></div>
+						<div class="loading-bar h-full w-1/3 bg-accent"></div>
 					</div>
 
-					<p class="text-[13px] text-dim">
-						{player.status === 'switching' ? 'Меняем озвучку…' : 'Готовим поток…'}
+					<p
+						class="loading-status flex items-center text-[13px] text-dim"
+						role="status"
+						aria-live="polite"
+					>
+						<span>{loadingLabel}</span>
+						<span class="loading-dots ml-1" aria-hidden="true">
+							<span></span><span></span><span></span>
+						</span>
 					</p>
 
 					{#if player.errorMessage}
@@ -1190,13 +1218,158 @@
 		}
 	}
 
-	/* Полоса ожидания: бежит туда-обратно, не обещая процентов. */
+	.loading-backdrop {
+		animation: loading-backdrop 4.8s ease-in-out infinite alternate;
+	}
+
+	.loading-poster-wrap {
+		position: relative;
+		border-radius: var(--r-md);
+		animation: loading-float 2.6s ease-in-out infinite;
+	}
+
+	.loading-poster {
+		position: relative;
+		z-index: 1;
+		display: block;
+	}
+
+	.loading-orbit {
+		position: absolute;
+		inset: -10px;
+		z-index: 0;
+		border: 1px solid rgb(255 255 255 / 0.12);
+		border-left-color: transparent;
+		border-top-color: var(--c-accent);
+		border-radius: calc(var(--r-md) + 8px);
+		animation: loading-orbit 1.7s linear infinite;
+		box-shadow: 0 0 24px rgb(var(--c-glow) / 0.16);
+	}
+
+	.loading-orbit-secondary {
+		inset: -5px;
+		border-top-color: transparent;
+		border-right-color: rgb(255 255 255 / 0.34);
+		animation-direction: reverse;
+		animation-duration: 2.4s;
+	}
+
+	.loading-sheen {
+		position: absolute;
+		inset: 0;
+		z-index: 2;
+		overflow: hidden;
+		border-radius: var(--r-md);
+		pointer-events: none;
+	}
+
+	.loading-sheen::after {
+		content: '';
+		position: absolute;
+		top: -20%;
+		bottom: -20%;
+		left: -55%;
+		width: 34%;
+		transform: skewX(-16deg);
+		background: linear-gradient(90deg, transparent, rgb(255 255 255 / 0.2), transparent);
+		animation: loading-sheen 2.1s ease-in-out infinite;
+	}
+
+	.loading-bar {
+		animation: indeterminate 1.25s ease-in-out infinite;
+		box-shadow: 0 0 12px rgb(var(--c-glow) / 0.38);
+	}
+
+	.loading-status {
+		min-height: 1.25rem;
+	}
+
+	.loading-dots {
+		display: inline-flex;
+		align-items: center;
+		gap: 3px;
+	}
+
+	.loading-dots > span {
+		width: 3px;
+		height: 3px;
+		border-radius: 999px;
+		background: currentColor;
+		animation: loading-dot 1.05s ease-in-out infinite;
+	}
+
+	.loading-dots > span:nth-child(2) {
+		animation-delay: 0.14s;
+	}
+
+	.loading-dots > span:nth-child(3) {
+		animation-delay: 0.28s;
+	}
+
+	@keyframes loading-backdrop {
+		from {
+			transform: scale(1.05);
+			opacity: 0.32;
+		}
+		to {
+			transform: scale(1.09);
+			opacity: 0.44;
+		}
+	}
+
+	@keyframes loading-float {
+		0%, 100% {
+			transform: translateY(0);
+		}
+		50% {
+			transform: translateY(-5px);
+		}
+	}
+
+	@keyframes loading-orbit {
+		to {
+			transform: rotate(360deg);
+		}
+	}
+
+	@keyframes loading-sheen {
+		0%, 18% {
+			left: -55%;
+		}
+		78%, 100% {
+			left: 125%;
+		}
+	}
+
+	@keyframes loading-dot {
+		0%, 70%, 100% {
+			transform: translateY(0);
+			opacity: 0.35;
+		}
+		35% {
+			transform: translateY(-3px);
+			opacity: 1;
+		}
+	}
+
+	/* Полоса ожидания: бежит слева направо, не обещая процентов. */
 	@keyframes indeterminate {
 		0% {
 			transform: translateX(-100%);
 		}
 		100% {
 			transform: translateX(300%);
+		}
+	}
+
+	@media (prefers-reduced-motion: reduce) {
+		.loading-backdrop,
+		.loading-poster-wrap,
+		.loading-orbit,
+		.loading-sheen::after,
+		.loading-bar,
+		.loading-dots > span {
+			animation: none;
 		}
 	}
 </style>

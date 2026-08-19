@@ -82,7 +82,7 @@
 							loading="lazy"
 							decoding="async"
 							class="h-full w-full object-cover transition-transform duration-[var(--t-slower)]
-							       ease-[var(--ease-out-quint)] group-hover/card:scale-[1.05]"
+							       ease-[var(--ease-smooth)] group-hover/card:scale-[1.035]"
 						/>
 					{:else}
 						<div

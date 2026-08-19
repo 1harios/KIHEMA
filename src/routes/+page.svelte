@@ -50,14 +50,16 @@
 			<a
 				href="/picker"
 				class="group relative flex min-h-[11rem] items-end overflow-hidden rounded-lg border
-				       border-line-soft bg-surface/50 p-5 transition duration-[var(--t-med)]
+				       border-line-soft bg-surface/50 p-5 transition duration-[var(--t-slow)]
+				       ease-[var(--ease-smooth)]
 				       hover:border-line-strong sm:min-h-[15rem] sm:items-center md:p-7"
 			>
 				<img
 					src="/images/picker-banner-v2.png"
 					alt=""
 					class="absolute inset-0 h-full w-full object-cover object-[72%_55%] opacity-90 transition
-					       duration-700 group-hover:scale-[1.01] group-hover:opacity-100"
+					       duration-[var(--t-slower)] ease-[var(--ease-smooth)]
+					       group-hover:scale-[1.006] group-hover:opacity-100"
 				/>
 				<div
 					class="absolute inset-0 bg-gradient-to-r from-[#07090d] via-[#07090d]/85 to-transparent"

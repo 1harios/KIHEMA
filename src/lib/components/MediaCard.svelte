@@ -150,7 +150,7 @@
 					fetchpriority={eager ? 'high' : 'auto'}
 					decoding="async"
 					class="h-full w-full object-cover transition-transform duration-[var(--t-slower)]
-					       ease-[var(--ease-out-quint)] group-hover/card:scale-[1.07]"
+					       ease-[var(--ease-smooth)] group-hover/card:scale-[1.045]"
 				/>
 			{:else}
 				<!-- Постера нет: не пустой прямоугольник, а название крупно. -->

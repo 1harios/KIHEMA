@@ -296,13 +296,8 @@
 			class="relative mx-auto max-w-[var(--page-max)] px-[var(--gutter)] pb-9 pt-20
 			       sm:pb-12 sm:pt-24 md:pt-32"
 		>
-			<!--
-				md:items-end — колонка с рейтингом, жанрами и кнопками выравнивается по
-				низу постера. Раньше обе колонки начинались от верха, и правая
-				заканчивалась заметно выше постера: две несвязанные плиты вместо одного
-				блока. Нижняя линия общая — блок читается целиком.
-			-->
-			<div class="flex flex-col gap-5 sm:gap-7 md:flex-row md:items-end md:gap-10">
+			<!-- На широком экране текст начинается на одной высоте с постером. -->
+			<div class="flex flex-col gap-5 sm:gap-7 md:flex-row md:items-start md:gap-10">
 				<!-- Постер -->
 				<div class="w-32 shrink-0 sm:w-40 md:w-60 tv:w-80">
 					<div class="overflow-hidden rounded-md shadow-4 ring-1 ring-white/10">

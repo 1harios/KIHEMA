@@ -10,9 +10,35 @@
  * приходят локализованными и меняются от языка запроса, а числа стабильны.
  */
 
-import type { IconName } from './components/ui/Icon.svelte';
+/** Ключ залитой пиктограммы из Font Awesome Free Solid. */
+export type GenreIconName =
+	| 'genreAction'
+	| 'compass'
+	| 'genreAnimation'
+	| 'genreComedy'
+	| 'genreCrime'
+	| 'genreDocumentary'
+	| 'genreDrama'
+	| 'genreFamily'
+	| 'genreFantasy'
+	| 'genreHistory'
+	| 'genreHorror'
+	| 'genreMusic'
+	| 'genreMystery'
+	| 'genreRomance'
+	| 'genreScifi'
+	| 'tv'
+	| 'genreThriller'
+	| 'genreWar'
+	| 'genreWestern'
+	| 'genreKids'
+	| 'genreNews'
+	| 'genreReality'
+	| 'genreSoap'
+	| 'genreTalk'
+	| 'film';
 
-const BY_ID: Record<number, IconName> = {
+const BY_ID: Record<number, GenreIconName> = {
 	/* --- фильмы --- */
 	28: 'genreAction', // Боевик
 	12: 'compass', // Приключения
@@ -50,4 +76,4 @@ const BY_ID: Record<number, IconName> = {
  * держится на том, что у каждой есть графика. TMDB может добавить жанр в любой
  * момент, и разъезжаться от этого сетка не должна.
  */
-export const genreIcon = (id: number): IconName => BY_ID[id] ?? 'film';
+export const genreIcon = (id: number): GenreIconName => BY_ID[id] ?? 'film';

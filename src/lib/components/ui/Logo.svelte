@@ -23,46 +23,56 @@
 	const uid = `logo-${Math.random().toString(36).slice(2, 8)}`;
 </script>
 
-<span class="flex items-center gap-2.5 {cls}">
-	<svg
-		viewBox="0 0 32 32"
-		width={size}
-		height={size}
-		class="shrink-0 text-accent"
-		aria-hidden="true"
-		focusable="false"
-	>
-		<defs>
-			<clipPath id={uid}>
-				<rect x="3" y="3" width="26" height="26" rx="8.5" />
-			</clipPath>
-		</defs>
-
-		<g clip-path="url(#{uid})">
-			<!-- Луч: две полосы разной плотности — так он читается как свет, а не
-			     как декоративная диагональ. -->
-			<path d="M -3 21 L 14 -3 L 25 -3 L 8 21 Z" fill="currentColor" opacity="0.5" />
-			<path d="M 5 33 L 22 9 L 28 9 L 11 33 Z" fill="currentColor" opacity="0.15" />
-		</g>
-
-		<rect
-			x="4.2"
-			y="4.2"
-			width="23.6"
-			height="23.6"
-			rx="7.4"
-			fill="none"
-			stroke="currentColor"
-			stroke-width="2.3"
-		/>
-	</svg>
-
-	{#if !markOnly}
-		<span
-			class="font-display text-[15px] font-semibold leading-none text-ink"
-			style="letter-spacing: 0.13em"
+<span class="inline-flex items-center {cls}">
+	{#if markOnly}
+		<svg
+			viewBox="0 0 32 32"
+			width={size}
+			height={size}
+			class="shrink-0 text-accent"
+			aria-hidden="true"
+			focusable="false"
 		>
-			КИНЕМА
-		</span>
+			<defs>
+				<clipPath id={uid}>
+					<rect x="3" y="3" width="26" height="26" rx="8.5" />
+				</clipPath>
+			</defs>
+
+			<g clip-path="url(#{uid})">
+				<!-- Луч: две полосы разной плотности — так он читается как свет, а не
+				     как декоративная диагональ. -->
+				<path d="M -3 21 L 14 -3 L 25 -3 L 8 21 Z" fill="currentColor" opacity="0.5" />
+				<path d="M 5 33 L 22 9 L 28 9 L 11 33 Z" fill="currentColor" opacity="0.15" />
+			</g>
+
+			<rect
+				x="4.2"
+				y="4.2"
+				width="23.6"
+				height="23.6"
+				rx="7.4"
+				fill="none"
+				stroke="currentColor"
+				stroke-width="2.3"
+			/>
+		</svg>
+	{:else}
+		<span
+			class="brand-wordmark block shrink-0"
+			style="--logo-size: {size}px"
+			aria-hidden="true"
+		></span>
+		<span class="sr-only">КИНЕМА</span>
 	{/if}
 </span>
+
+<style>
+	.brand-wordmark {
+		width: calc(var(--logo-size) * 5.8);
+		height: var(--logo-size);
+		background: url('/images/kihema-wordmark-v2.png') center / 138% auto no-repeat;
+		/* Чёрный фон PNG растворяется в тёмной поверхности, белый знак сохраняется. */
+		mix-blend-mode: screen;
+	}
+</style>

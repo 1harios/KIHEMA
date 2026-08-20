@@ -73,8 +73,14 @@ export const config = {
 		apiUrl: envOr(env.SCRAPER_API_URL, 'https://lightstream.ws/api/scrape'),
 		// Upstream отдаёт потоки только «своему» источнику — шлём Origin.
 		apiOrigin: envOr(env.SCRAPER_API_ORIGIN, 'https://lightstream.ws'),
-		/** Источники через запятую; порядок = приоритет. */
-		sources: envOr(env.SCRAPER_SOURCES, 'cobalt,titan,carbon')
+		/**
+		 * Источники через запятую; порядок = приоритет.
+		 * Carbon первым: его CDN (interkh.com) отдаёт манифесты и сегменты с
+		 * Access-Control-Allow-Origin для любого источника — играется в браузере
+		 * напрямую. Titan (obrut.show) разрешает только Origin lightstream.ws и
+		 * в браузере даёт 403, поэтому он запасной.
+		 */
+		sources: envOr(env.SCRAPER_SOURCES, 'carbon,titan,cobalt')
 			.split(',')
 			.map((s) => s.trim())
 			.filter(Boolean)

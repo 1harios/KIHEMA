@@ -178,8 +178,10 @@ function toPlaybackSource(
 		}
 	}
 
-	const preferred =
-		translations.find((t) => t.manifest === 'hls') ?? translations[0];
+	// Поток берём у старшего по приоритету источника: порядок источников
+	// подобран по играбельности в браузере, и HLS-предпочтение не должно
+	// вытаскивать заблокированный поток из младшего источника поверх рабочего.
+	const preferred = translations[0];
 	if (!preferred || !firstUrl) return null;
 
 	const epKey =

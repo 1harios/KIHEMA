@@ -224,6 +224,7 @@ export class PlayerController {
 		} catch (e) {
 			if (this.destroyed) return;
 			const msg = e instanceof Error ? e.message : 'Не удалось загрузить поток';
+			this.teardownMedia();
 
 			// Временный сбой upstream (их API бывает лежит) — переподробуем сами:
 			// как только сервис оживёт, фильм начнётся без участия пользователя.
@@ -376,6 +377,30 @@ export class PlayerController {
 					manifestLoadingMaxRetry: 3
 				});
 
+				// Не считаем источник готовым, пока браузер действительно не разобрал
+				// манифест. Раньше attach() возвращался сразу, экран ожидания исчезал,
+				// а заблокированный CDN бесконечно перезапускал hls.js в фоне.
+				const manifestReady = new Promise<void>((resolve, reject) => {
+					let settled = false;
+					let timer: ReturnType<typeof setTimeout>;
+					const finish = (action: () => void) => {
+						if (settled) return;
+						settled = true;
+						clearTimeout(timer);
+						action();
+					};
+
+					hls.once(HlsCtor.Events.MANIFEST_PARSED, () => finish(resolve));
+					hls.on(HlsCtor.Events.ERROR, (_event, data) => {
+						if (!data.fatal || data.type !== HlsCtor.ErrorTypes.NETWORK_ERROR) return;
+						finish(() => reject(new Error(hlsNetworkMessage(data.response?.code))));
+					});
+					timer = setTimeout(
+						() => finish(() => reject(new Error('CDN слишком долго не отдаёт HLS-манифест'))),
+						12_000
+					);
+				});
+
 				// Уровни известны только после разбора манифеста.
 				hls.on(HlsCtor.Events.MANIFEST_PARSED, () => {
 					this.levels = hls.levels
@@ -400,8 +425,13 @@ export class PlayerController {
 
 				hls.on(HlsCtor.Events.ERROR, (_e, data) => {
 					if (!data.fatal) return;
-					// Сетевые и медийные сбои чинятся штатно, остальное — наверх.
-					if (data.type === HlsCtor.ErrorTypes.NETWORK_ERROR) hls.startLoad();
+					// Внутренние повторы hls.js уже исчерпаны. startLoad() здесь создавал
+					// бесконечный цикл при 403/CORS вместо понятной ошибки пользователю.
+					if (data.type === HlsCtor.ErrorTypes.NETWORK_ERROR) {
+						hls.stopLoad();
+						this.status = 'error';
+						this.errorMessage = hlsNetworkMessage(data.response?.code);
+					}
 					else if (data.type === HlsCtor.ErrorTypes.MEDIA_ERROR) hls.recoverMediaError();
 					else {
 						this.status = 'error';
@@ -412,6 +442,7 @@ export class PlayerController {
 				hls.loadSource(source.streamUrl);
 				hls.attachMedia(video);
 				this.hls = hls;
+				await manifestReady;
 			} else if (video.canPlayType('application/vnd.apple.mpegurl') !== '') {
 				// Safari и прочие браузеры с настоящим нативным HLS.
 				video.src = source.streamUrl;
@@ -713,6 +744,13 @@ export class PlayerController {
 		this.teardownMedia();
 		this.video = null;
 	}
+}
+
+function hlsNetworkMessage(code?: number): string {
+	if (code === 401 || code === 403) {
+		return 'CDN запретил воспроизведение на этом сайте';
+	}
+	return 'CDN отклонил запрос или не разрешил доступ из браузера';
 }
 
 /** Форматирование времени: 1:02:03 для длинных, 2:03 для коротких. */

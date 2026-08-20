@@ -701,15 +701,12 @@
 			<div class="absolute inset-0 grid place-items-center px-6">
 				<div class="flex max-w-md flex-col items-center text-center">
 					{#if art?.poster}
-						<div class="loading-poster-wrap mb-6">
-							<span class="loading-orbit" aria-hidden="true"></span>
-							<span class="loading-orbit loading-orbit-secondary" aria-hidden="true"></span>
+						<div class="mb-6">
 							<img
 								src={art.poster}
 								alt=""
-								class="loading-poster h-40 w-auto rounded-md shadow-4 ring-1 ring-white/10"
+								class="block h-40 w-auto rounded-md shadow-4 ring-1 ring-white/10"
 							/>
-							<span class="loading-sheen" aria-hidden="true"></span>
 						</div>
 					{/if}
 
@@ -1236,59 +1233,6 @@
 		animation: loading-backdrop 4.8s ease-in-out infinite alternate;
 	}
 
-	.loading-poster-wrap {
-		position: relative;
-		border-radius: var(--r-md);
-		animation: loading-float 2.6s ease-in-out infinite;
-	}
-
-	.loading-poster {
-		position: relative;
-		z-index: 1;
-		display: block;
-	}
-
-	.loading-orbit {
-		position: absolute;
-		inset: -10px;
-		z-index: 0;
-		border: 1px solid rgb(255 255 255 / 0.12);
-		border-left-color: transparent;
-		border-top-color: var(--c-accent);
-		border-radius: calc(var(--r-md) + 8px);
-		animation: loading-orbit 1.7s linear infinite;
-		box-shadow: 0 0 24px rgb(var(--c-glow) / 0.16);
-	}
-
-	.loading-orbit-secondary {
-		inset: -5px;
-		border-top-color: transparent;
-		border-right-color: rgb(255 255 255 / 0.34);
-		animation-direction: reverse;
-		animation-duration: 2.4s;
-	}
-
-	.loading-sheen {
-		position: absolute;
-		inset: 0;
-		z-index: 2;
-		overflow: hidden;
-		border-radius: var(--r-md);
-		pointer-events: none;
-	}
-
-	.loading-sheen::after {
-		content: '';
-		position: absolute;
-		top: -20%;
-		bottom: -20%;
-		left: -55%;
-		width: 34%;
-		transform: skewX(-16deg);
-		background: linear-gradient(90deg, transparent, rgb(255 255 255 / 0.2), transparent);
-		animation: loading-sheen 2.1s ease-in-out infinite;
-	}
-
 	.loading-bar {
 		animation: indeterminate 1.25s ease-in-out infinite;
 		box-shadow: 0 0 12px rgb(var(--c-glow) / 0.38);
@@ -1331,30 +1275,6 @@
 		}
 	}
 
-	@keyframes loading-float {
-		0%, 100% {
-			transform: translateY(0);
-		}
-		50% {
-			transform: translateY(-5px);
-		}
-	}
-
-	@keyframes loading-orbit {
-		to {
-			transform: rotate(360deg);
-		}
-	}
-
-	@keyframes loading-sheen {
-		0%, 18% {
-			left: -55%;
-		}
-		78%, 100% {
-			left: 125%;
-		}
-	}
-
 	@keyframes loading-dot {
 		0%, 70%, 100% {
 			transform: translateY(0);
@@ -1378,9 +1298,6 @@
 
 	@media (prefers-reduced-motion: reduce) {
 		.loading-backdrop,
-		.loading-poster-wrap,
-		.loading-orbit,
-		.loading-sheen::after,
 		.loading-bar,
 		.loading-dots > span {
 			animation: none;

@@ -139,6 +139,46 @@ function pickVideoFile(files: TorrFile[], target: ScrapeTarget): TorrFile | null
 	)[0];
 }
 
+/* ------------------------------ аудиодорожки ------------------------------ */
+
+interface ProbeTrack {
+	Type: string;
+	Title?: string;
+	Language?: string;
+}
+
+const LANG_NAMES: Record<string, string> = {
+	ru: 'Русский',
+	en: 'Английский',
+	uk: 'Украинский',
+	de: 'Немецкий',
+	fr: 'Французский',
+	es: 'Испанский',
+	it: 'Итальянский',
+	ja: 'Японский',
+	ko: 'Корейский',
+	zh: 'Китайский'
+};
+
+/**
+ * Состав дорожек файла. gst-эндпоинт probe возвращает видео/аудио/субтитры с
+ * языками — из него строится список «озвучек» (параметр audio=N у master.m3u8).
+ */
+async function probeAudioTracks(hash: string, fileId: number): Promise<ProbeTrack[] | null> {
+	try {
+		const res = await fetch(
+			`${config.torrents.serverUrl}/gst/${hash}/probe?index=${fileId}`,
+			{ signal: AbortSignal.timeout(10_000) }
+		);
+		if (!res.ok) return null;
+		const probe = (await res.json()) as { Tracks?: ProbeTrack[] };
+		const audios = (probe.Tracks ?? []).filter((t) => t.Type === 'audio');
+		return audios.length ? audios : null;
+	} catch {
+		return null;
+	}
+}
+
 /* ---------------------------------- API ----------------------------------- */
 
 /** Ищет тайтл в раздачах и заводит его в локальный TorrServer. */
@@ -224,30 +264,45 @@ export async function torrentPlaybackSource(
 		target.type === 'show'
 			? `${target.season ?? 1}x${target.episode ?? 1}`
 			: 'movie';
-	const label = `Торрент · ${brief.title}${best.Title && best.Title !== brief.title ? ` (${best.Title})` : ''}`;
 
-	const url = `${config.torrents.serverUrl}/gst/${hash}/master.m3u8?index=${file.id}&audio=0`;
+	// Каждая аудиодорожка MKV — отдельная «озвучка»: у gst свой поток на
+	// дорожку через audio=N. probe на только что добавленном файле может не
+	// успеть (gst-discoverer обрывается, пока данные не прогреются) — один
+	// повтор; нет ответа и после него — остаёмся с дорожкой по умолчанию.
+	let audios = await probeAudioTracks(hash, file.id);
+	if (!audios) {
+		await new Promise((r) => setTimeout(r, 4_000));
+		audios = await probeAudioTracks(hash, file.id);
+	}
+	const trackCount = audios?.length ?? 1;
+	const urlFor = (audio: number) =>
+		`${config.torrents.serverUrl}/gst/${hash}/master.m3u8?index=${file.id}&audio=${audio}`;
 
-	const translation: Translation = {
-		id: `torrent:${hash}:${file.id}`,
-		audioStreamIndex: 0,
-		label,
-		isDefault: true,
-		url,
-		manifest: 'hls'
-	};
+	const translations: Translation[] = Array.from({ length: trackCount }, (_, i) => {
+		const track = audios?.[i];
+		const trackName =
+			track?.Title || LANG_NAMES[track?.Language ?? ''] || `Дорожка ${i + 1}`;
+		return {
+			id: `torrent:${hash}:${file.id}:${i}`,
+			audioStreamIndex: i,
+			label: `Торрент · ${trackName}`,
+			isDefault: i === 0,
+			url: urlFor(i),
+			manifest: 'hls'
+		};
+	});
 
 	return {
 		jellyfinItemId: `torrent:${target.type}:${target.tmdbId}:${epKey}`,
 		mediaSourceId: hash,
 		playSessionId: `torrent-${target.tmdbId}-${epKey}`,
-		streamUrl: url,
+		streamUrl: urlFor(0),
 		// TorrServer сам транскодирует на лету; для плеера поток уже готов.
 		playMethod: 'DirectPlay',
 		durationSec: 0,
 		startPositionSec: 0,
-		translations: [translation],
-		activeTranslationId: translation.id,
+		translations,
+		activeTranslationId: translations[0].id,
 		subtitles: [],
 		segments: []
 	};

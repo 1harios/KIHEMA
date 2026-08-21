@@ -32,6 +32,7 @@ interface TorrFile {
 
 interface TorrListEntry {
 	hash?: string;
+	title?: string;
 	/** JSON-строка: метаданные раздачи, файлы внутри .TorrServer.Files. */
 	data?: string;
 }
@@ -105,6 +106,16 @@ function rankedTorrents(results: JackettResult[], target: ScrapeTarget): Jackett
 
 /* ------------------------------- TorrServer ------------------------------- */
 
+function parseFiles(data?: string): TorrFile[] {
+	if (!data) return [];
+	try {
+		const parsed = JSON.parse(data) as { TorrServer?: { Files?: TorrFile[] } };
+		return parsed.TorrServer?.Files ?? [];
+	} catch {
+		return [];
+	}
+}
+
 /**
  * Файлы раздачи. action:"stat" у MatriX отвечает пусто — файлы приходят только
  * в action:"list" внутри сериализованного поля data.
@@ -119,13 +130,7 @@ async function torrentFiles(hash: string): Promise<TorrFile[]> {
 	if (!res.ok) return [];
 	const list = (await res.json()) as TorrListEntry[];
 	const entry = list.find((t) => (t.hash ?? '').toLowerCase() === hash);
-	if (!entry?.data) return [];
-	try {
-		const parsed = JSON.parse(entry.data) as { TorrServer?: { Files?: TorrFile[] } };
-		return parsed.TorrServer?.Files ?? [];
-	} catch {
-		return [];
-	}
+	return parseFiles(entry?.data);
 }
 
 /** Имя файла в раздаче может не совпадать с названием раздачи. */
@@ -221,6 +226,45 @@ async function prewarmManifest(
 	}
 }
 
+/** Маркер раздач, добавленных вручную: «kinema:<тип>:<tmdbId>:…». */
+const localMark = (target: ScrapeTarget): string => `kinema:${target.type}:${target.tmdbId}:`;
+
+/**
+ * Локальная библиотека: раздачи, добавленные в TorrServer вручную с маркером
+ * «kinema:<тип>:<tmdbId>:» в названии. Они уже в базе — трекеры искать не
+ * нужно, источник берётся напрямую.
+ */
+async function localLibrarySource(target: ScrapeTarget): Promise<PlaybackSource | null> {
+	try {
+		const res = await fetch(`${config.torrents.serverUrl}/torrents`, {
+			method: 'POST',
+			headers: { 'content-type': 'application/json' },
+			body: JSON.stringify({ action: 'list' }),
+			signal: AbortSignal.timeout(5_000)
+		});
+		if (!res.ok) return null;
+		const list = (await res.json()) as TorrListEntry[];
+		const mark = localMark(target);
+		const entry = list.find((t) => (t.title ?? '').startsWith(mark) && t.hash);
+		if (!entry) return null;
+
+		const hash = entry.hash!.toLowerCase();
+		const file = pickVideoFile(parseFiles(entry.data), target);
+		if (!file) {
+			console.warn(`[torrents] локальная раздача ${hash}: играбельного файла нет`);
+			return null;
+		}
+		console.warn(`[torrents] найдена локальная раздача: ${hash}`);
+		return buildSource(hash, file, target);
+	} catch (e) {
+		console.warn(
+			'[torrents] локальная библиотека недоступна:',
+			e instanceof Error ? e.message : e
+		);
+		return null;
+	}
+}
+
 /** Ищет тайтл в раздачах и заводит его в локальный TorrServer. */
 export async function torrentPlaybackSource(
 	target: ScrapeTarget
@@ -232,6 +276,10 @@ export async function torrentPlaybackSource(
 		console.warn('[torrents] TMDB не отдал название тайтла — поиск раздач невозможен');
 		return null;
 	}
+
+	// Локальная библиотека быстрее трекеров: раздача уже в базе TorrServer.
+	const local = await localLibrarySource(target);
+	if (local) return local;
 
 	// Русские трекеры индексируют локализованные названия, западные — оригинал:
 	// ищем по обоим параллельно и склеиваем без дубликатов по magnet.
@@ -360,6 +408,15 @@ async function tryTorrentCandidate(
 		return null;
 	}
 
+	return buildSource(hash, file, target);
+}
+
+/** Прогревает манифест раздачи и собирает из неё PlaybackSource. */
+async function buildSource(
+	hash: string,
+	file: TorrFile,
+	target: ScrapeTarget
+): Promise<PlaybackSource | null> {
 	const epKey =
 		target.type === 'show'
 			? `${target.season ?? 1}x${target.episode ?? 1}`

@@ -131,7 +131,12 @@ function pickVideoFile(files: TorrFile[], target: ScrapeTarget): TorrFile | null
 		const ep = videos.find((f) => episodeInTitle(f.path, target.season ?? 1, e));
 		if (ep) return ep;
 	}
-	return videos.sort((a, b) => b.length - a.length)[0];
+	// gst-сборка TorrServer транскодирует только Matroska/WebM; AVI/MP4 она
+	// отвергает, поэтому MKV строго выше остальных контейнеров.
+	const containerRank = (p: string) => (/\.(mkv|webm)$/i.test(p) ? 0 : 1);
+	return videos.sort(
+		(a, b) => containerRank(a.path) - containerRank(b.path) || b.length - a.length
+	)[0];
 }
 
 /* ---------------------------------- API ----------------------------------- */

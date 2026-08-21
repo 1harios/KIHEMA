@@ -255,13 +255,23 @@ export class PlayerController {
 	/**
 	 * Поток оборвался посреди просмотра: движок сам не поднялся.
 	 * Пересобираем источник целиком и возвращаемся на текущую позицию.
+	 * Возвращает false, если вмешательство не нужно — видео ещё играет.
 	 */
-	private scheduleStreamRetry(): void {
-		if (this.destroyed || !this.target || this.retryTimer) return;
+	private scheduleStreamRetry(): boolean {
+		if (this.destroyed || !this.target) return false;
+
+		// Движок сообщил об ошибке, но видео продолжает идти из буфера —
+		// пересборка только прервёт работающий просмотр. Вмешиваемся, лишь
+		// когда воспроизведение реально встало.
+		const v = this.video;
+		if (v && !v.paused && !v.ended && v.readyState >= 2) return false;
+
+		if (this.retryTimer) return true;
+
 		if (this.retryCount >= PlayerController.MAX_AUTO_RETRIES) {
 			this.status = 'error';
 			this.errorMessage = 'Поток оборвался и не восстановился';
-			return;
+			return true;
 		}
 
 		const resumeAt = this.currentTime;
@@ -276,6 +286,7 @@ export class PlayerController {
 			() => void this.load(this.target!, { autoRetry: true, resumeSec: resumeAt }),
 			5_000
 		);
+		return true;
 	}
 
 	/** Переключение озвучки. Публичный вход — им пользуется UI. */
@@ -361,9 +372,12 @@ export class PlayerController {
 			const { default: dashjs } = await import('dashjs');
 			const dash = dashjs.MediaPlayer().create() as unknown as DashPlayer;
 			dash.on('error', () => {
-				// dash.js сам не восстанавливается после сбоя сегмента/манифеста —
-				// пересобираем источник целиком (URL у CDN бывают одноразовые).
-				this.scheduleStreamRetry();
+				// dash.js часто сообщает об ошибке одной из репрезентаций, продолжая
+				// играть из буфера. Даём 2 секунды: если просмотр идёт — не лезем.
+				setTimeout(() => {
+					if (this.dash !== dash) return; // инстанс уже заменён
+					this.scheduleStreamRetry();
+				}, 2_000);
 			});
 			dash.initialize(video, source.streamUrl, false);
 			this.dash = dash;
@@ -400,7 +414,9 @@ export class PlayerController {
 					abrEwmaDefaultEstimate: 1_200_000,
 					// Дыры в буфере на склейках сегментов не должны вставать в ступор.
 					maxBufferHole: 0.5,
-					fragLoadingMaxRetry: 4,
+					// Торрент-транскодер на слабом VPS отдаёт сегменты медленнее
+					// реального времени — повторов нужно больше обычного.
+					fragLoadingMaxRetry: 8,
 					manifestLoadingMaxRetry: 3
 				});
 
@@ -457,13 +473,13 @@ export class PlayerController {
 					// Внутренние повторы hls.js уже исчерпаны. startLoad() здесь создавал
 					// бесконечный цикл при 403/CORS вместо понятной ошибки пользователю.
 					if (data.type === HlsCtor.ErrorTypes.NETWORK_ERROR) {
-						hls.stopLoad();
 						if (data.response?.code === 401 || data.response?.code === 403) {
+							hls.stopLoad();
 							this.status = 'error';
 							this.errorMessage = hlsNetworkMessage(data.response.code);
-						} else {
-							// Обрыв сегмента/манифеста — пробуем пересобрать источник.
-							this.scheduleStreamRetry();
+						} else if (!this.scheduleStreamRetry()) {
+							// Видео ещё играет из буфера — просто продолжаем тянуть.
+							hls.startLoad();
 						}
 					}
 					else if (data.type === HlsCtor.ErrorTypes.MEDIA_ERROR) hls.recoverMediaError();

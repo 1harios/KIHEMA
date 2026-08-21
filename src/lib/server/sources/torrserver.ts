@@ -172,7 +172,7 @@ async function probeAudioTracks(hash: string, fileId: number): Promise<ProbeTrac
 	try {
 		const res = await fetch(
 			`${config.torrents.serverUrl}/gst/${hash}/probe?index=${fileId}`,
-			{ signal: AbortSignal.timeout(10_000) }
+			{ signal: AbortSignal.timeout(8_000) }
 		);
 		if (!res.ok) return null;
 		const probe = (await res.json()) as { Tracks?: ProbeTrack[] };
@@ -194,12 +194,12 @@ async function probeAudioTracks(hash: string, fileId: number): Promise<ProbeTrac
  */
 async function prewarmManifest(
 	url: () => string,
-	budgetMs = 25_000
+	budgetMs = 20_000
 ): Promise<{ ok: true } | { ok: false; reason: string }> {
 	const startedAt = Date.now();
 	for (;;) {
 		try {
-			const res = await fetch(url(), { signal: AbortSignal.timeout(12_000) });
+			const res = await fetch(url(), { signal: AbortSignal.timeout(10_000) });
 			const text = await res.text().catch(() => '');
 			if (res.ok) return { ok: true };
 			const definitive =
@@ -263,14 +263,38 @@ export async function torrentPlaybackSource(
 		return null;
 	}
 
-	// Раздачи перебираем по пригодности: у лучшей может оказаться неиграбельный
-	// контейнер (AVI) или мёртвые пиры — тогда берём следующую.
-	for (const cand of candidates) {
-		const source = await tryTorrentCandidate(cand, target, brief.title ?? '');
-		if (source) return source;
+	// Кандидаты запускаем параллельно: пока один собирает метаданные и пиров,
+	// другие уже греются. Кто первым дал играбельный манифест — тот и поток.
+	// Последовательный перебор здесь не годится: каждая раздача может ждать
+	// метаданные десятки секунд, а у функции жёсткий лимит времени.
+	const attempts = candidates.map((cand) =>
+		tryTorrentCandidate(cand, target, brief.title ?? '').catch(() => null)
+	);
+	const source = await firstNonNull(attempts);
+	if (!source) {
+		console.warn(`[torrents] ни одна из ${candidates.length} раздач не дала играбельный поток`);
 	}
-	console.warn(`[torrents] ни одна из ${candidates.length} раздач не дала играбельный поток`);
-	return null;
+	return source;
+}
+
+/** Первый не-null результат; null, если все закончились без результата. */
+async function firstNonNull<T>(promises: Promise<T | null>[]): Promise<T | null> {
+	let winner: T | null = null;
+	let done = 0;
+	await new Promise<void>((resolve) => {
+		for (const p of promises) {
+			void p.then((v) => {
+				done += 1;
+				if (v && winner === null) {
+					winner = v;
+					resolve();
+				} else if (done === promises.length) {
+					resolve();
+				}
+			});
+		}
+	});
+	return winner;
 }
 
 /** Добавляет одну раздачу и пробует собрать из неё поток. null — берём следующую. */
@@ -281,13 +305,21 @@ async function tryTorrentCandidate(
 ): Promise<PlaybackSource | null> {
 	console.warn(`[torrents] пробуем раздачу «${cand.Title}» (сиды: ${cand.Seeders ?? 0})`);
 
+	// Голые magnet (rutracker через Jackett приходит без трекеров) полагаются
+	// только на DHT — из дата-центра метаданные так собираются минутами и не
+	// успевают в лимит. Работающий announce отдаёт их за секунды.
+	let link = cand.MagnetUri!;
+	if (!/[?&]tr=/.test(link)) {
+		link += `&tr=${encodeURIComponent('http://bt2.t-ru.org/ann?magnet')}`;
+	}
+
 	// save_to_db: true — иначе раздача не переживает stat/list и стрим не поднять.
 	const addRes = await fetch(`${config.torrents.serverUrl}/torrents`, {
 		method: 'POST',
 		headers: { 'content-type': 'application/json' },
 		body: JSON.stringify({
 			action: 'add',
-			link: cand.MagnetUri,
+			link,
 			title: cand.Title ?? fallbackTitle,
 			save_to_db: true
 		}),
@@ -304,11 +336,11 @@ async function tryTorrentCandidate(
 		return null;
 	}
 
-	// Метаданные читаются из пиров — до 30 секунд на «холодной» раздаче.
-	// Если список файлов уже пришёл, но играбельного (MKV/WebM) видео в нём
-	// нет — ждать дальше бессмысленно, отказываемся сразу.
+	// Метаданные читаются из пиров; бюджет ограничен лимитом функции, кандидаты
+	// идут параллельно. Если список файлов уже пришёл, но играбельного
+	// (MKV/WebM) видео в нём нет — ждать дальше бессмысленно, отказываемся сразу.
 	let file: TorrFile | null = null;
-	for (let i = 0; i < 20 && !file; i++) {
+	for (let i = 0; i < 12 && !file; i++) {
 		const files = await torrentFiles(hash);
 		if (files.length) {
 			file = pickVideoFile(files, target);
@@ -348,14 +380,9 @@ async function tryTorrentCandidate(
 	}
 
 	// Каждая аудиодорожка MKV — отдельная «озвучка»: у gst свой поток на
-	// дорожку через audio=N. probe на только что добавленном файле может не
-	// успеть (gst-discoverer обрывается, пока данные не прогреются) — один
-	// повтор; нет ответа и после него — остаёмся с дорожкой по умолчанию.
-	let audios = await probeAudioTracks(hash, file.id);
-	if (!audios) {
-		await new Promise((r) => setTimeout(r, 4_000));
-		audios = await probeAudioTracks(hash, file.id);
-	}
+	// дорожку через audio=N. Манифест к этому моменту прогрет, но discoverer
+	// всё равно может не успеть — тогда остаёмся с дорожкой по умолчанию.
+	const audios = await probeAudioTracks(hash, file.id);
 	const trackCount = audios?.length ?? 1;
 
 	const translations: Translation[] = Array.from({ length: trackCount }, (_, i) => {

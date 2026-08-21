@@ -6,7 +6,7 @@ import { getIntroDbSegments, mergeMediaSegments } from '$lib/server/introdb';
 import { readSession } from '$lib/server/session';
 import { scrapePlaybackSource, type ScrapeResult } from '$lib/server/sources/lightstream';
 import { torrentPlaybackSource } from '$lib/server/sources/torrserver';
-import type { MediaType, PlaybackSource } from '$lib/types';
+import type { MediaType, PlaybackProvider, PlaybackSource } from '$lib/types';
 
 /**
  * Разрешает тайтл в готовый к воспроизведению источник.
@@ -43,12 +43,15 @@ export const POST: RequestHandler = async ({ request, cookies }) => {
 		audioStreamIndex?: number;
 		subtitleStreamIndex?: number;
 		startPositionSec?: number;
+		/** Источники, которые уже доказанно не сработали — плеер просит их пропустить. */
+		exclude?: PlaybackProvider[];
 	};
 
 	if (!body?.tmdbId || !body?.type) error(400, 'Не переданы type и tmdbId');
 	if (body.type === 'show' && (body.season == null || body.episode == null)) {
 		error(400, 'Для сериала нужны season и episode');
 	}
+	const excluded = new Set(body.exclude ?? []);
 
 	/* ------------------------------ демо-режим ------------------------------ */
 	if (siteConfig.demoMode) {
@@ -129,13 +132,15 @@ export const POST: RequestHandler = async ({ request, cookies }) => {
 	}
 
 	/* ------------------------------ CDN-скраперы ----------------------------- */
-	const scraped = await tryScrape(body.type, body.tmdbId, body.season, body.episode);
+	const scraped = excluded.has('scrapers')
+		? ({ source: null, reason: 'not_found' } as ScrapeResult)
+		: await tryScrape(body.type, body.tmdbId, body.season, body.episode);
 	if (scraped.source) return json(await withIntroSegments(scraped.source));
 
 	/* ------------------------------- торренты -------------------------------- */
 	// Запасной путь: тайтла нет в играбельных CDN — пробуем локальный TorrServer.
 	// Включается только TORRSERVER_ENABLED=true; сбой не маскирует «нет в CDN».
-	if (siteConfig.torrents.enabled) {
+	if (siteConfig.torrents.enabled && !excluded.has('torrent')) {
 		try {
 			const torrent = await torrentPlaybackSource({
 				type: body.type,

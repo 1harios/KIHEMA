@@ -16,7 +16,7 @@
  * локально, без похода на сервер. Carbon отдаёт DASH — подключаем dash.js.
  */
 
-import type { MediaType, PlaybackSource, Translation } from '$lib/types';
+import type { MediaType, PlaybackProvider, PlaybackSource, Translation } from '$lib/types';
 
 type Hls = import('hls.js').default;
 
@@ -153,6 +153,8 @@ export class PlayerController {
 	private retryTimer: ReturnType<typeof setTimeout> | null = null;
 	private retryCount = 0;
 	private static readonly MAX_AUTO_RETRIES = 12;
+	/** Источники, чей поток доказанно мёртв (404/410 на сегментах) — пропускаем при повторе. */
+	private deadProviders = new Set<PlaybackProvider>();
 
 	async load(
 		target: PlayerTarget,
@@ -170,7 +172,10 @@ export class PlayerController {
 	): Promise<void> {
 		this.clearRetryTimer();
 		// Ручной запуск (кнопка, эффект) даёт новую серию автоповторов.
-		if (!opts.autoRetry) this.retryCount = 0;
+		if (!opts.autoRetry) {
+			this.retryCount = 0;
+			this.deadProviders.clear();
+		}
 		this.target = target;
 		// Контроллер переиспользуется после перемонтирования (SvelteKit обновляет
 		// data и эффект дёргается повторно) — снимаем «ядовитый» флаг destroy,
@@ -192,7 +197,8 @@ export class PlayerController {
 					season: target.season,
 					episode: target.episode,
 					audioStreamIndex: opts.audioStreamIndex,
-					startPositionSec: resumeAt
+					startPositionSec: resumeAt,
+					exclude: [...this.deadProviders]
 				})
 			});
 
@@ -371,7 +377,11 @@ export class PlayerController {
 		if (source.streamUrl.includes('.mpd')) {
 			const { default: dashjs } = await import('dashjs');
 			const dash = dashjs.MediaPlayer().create() as unknown as DashPlayer;
-			dash.on('error', () => {
+			dash.on('error', (e) => {
+				// 404/410/403 на сегментах — копия в CDN мертва насовсем, повтор
+				// ничего не даст: помечаем источник, чтобы уйти на следующий (торренты).
+				const msg = typeof e.error === 'string' ? e.error : (e.error?.message ?? '');
+				if (/not available|\b40[34]\b|\b410\b/i.test(msg)) this.deadProviders.add('scrapers');
 				// dash.js часто сообщает об ошибке одной из репрезентаций, продолжая
 				// играть из буфера. Даём 2 секунды: если просмотр идёт — не лезем.
 				setTimeout(() => {
@@ -396,7 +406,11 @@ export class PlayerController {
 			const { default: HlsCtor } = await import('hls.js');
 
 			if (HlsCtor.isSupported()) {
+				// У торрентов переписываем несовместимую метку аудиокодека в манифестах.
+				const loader =
+					source.provider === 'torrent' ? makeTorrentManifestLoader(HlsCtor) : undefined;
 				const hls = new HlsCtor({
+					...(loader && { loader }),
 					// Больше запас — меньше рискуем упереться в буфер на медленном канале.
 					maxBufferLength: 30,
 					maxMaxBufferLength: 90,
@@ -435,8 +449,13 @@ export class PlayerController {
 
 					hls.once(HlsCtor.Events.MANIFEST_PARSED, () => finish(resolve));
 					hls.on(HlsCtor.Events.ERROR, (_event, data) => {
-						if (!data.fatal || data.type !== HlsCtor.ErrorTypes.NETWORK_ERROR) return;
-						finish(() => reject(new Error(hlsNetworkMessage(data.response?.code))));
+						if (!data.fatal) return;
+						if (data.type === HlsCtor.ErrorTypes.NETWORK_ERROR) {
+							finish(() => reject(new Error(hlsNetworkMessage(data.response?.code))));
+						} else {
+							// Например, несовместимые кодеки — ждать таймаута бессмысленно.
+							finish(() => reject(new Error('Поток не поддерживается этим браузером')));
+						}
 					});
 					// Торрент-раздаче на холодном старте нужно время поднять транскодер —
 					// 12 секунд ей мало, остальным источникам хватает с запасом.
@@ -800,6 +819,81 @@ function hlsNetworkMessage(code?: number): string {
 		return 'CDN запретил воспроизведение на этом сайте';
 	}
 	return 'CDN отклонил запрос или не разрешил доступ из браузера';
+}
+
+/**
+ * TorrServer кодирует звук в AAC Main и честно помечает его mp4a.40.1 — и в
+ * манифесте, и в esds init-сегмента. Браузеры через MSE такой профиль не
+ * принимают (isTypeSupported = false), и hls.js молча отбрасывает уровень
+ * (manifestIncompatibleCodecsError) или не может создать SourceBuffer
+ * (bufferAddCodecError). Декодер при этом AAC Main понимает, поэтому метку
+ * правим на AAC-LC (mp4a.40.2): в манифестах — строкой, в init-сегменте —
+ * байтом objectType в AudioSpecificConfig.
+ */
+function patchAacMainToLc(bytes: Uint8Array): void {
+	// Ищем бокс esds: единственный в init-сегменте, в аудиодорожке.
+	let idx = -1;
+	for (let i = 0; i + 4 < bytes.length; i++) {
+		if (bytes[i] === 0x65 && bytes[i + 1] === 0x73 && bytes[i + 2] === 0x64 && bytes[i + 3] === 0x73) {
+			idx = i;
+			break;
+		}
+	}
+	if (idx < 0) return;
+
+	let p = idx + 8; // за 'esds' и полем version/flags
+	const end = Math.min(idx + 64, bytes.length);
+	while (p < end) {
+		const tag = bytes[p++];
+		let len = 0;
+		let m: number;
+		let guard = 0;
+		do {
+			m = bytes[p++];
+			len = (len << 7) | (m & 0x7f);
+		} while (m & 0x80 && guard++ < 3);
+		if (tag === 0x05 && len >= 2) {
+			// AudioSpecificConfig: профиль — первые 5 бит. 1 = Main, 2 = LC.
+			if (bytes[p] >> 3 === 1) bytes[p] = (2 << 3) | (bytes[p] & 0x07);
+			return;
+		}
+		if (tag === 0x03) {
+			p += 3; // ES_Descriptor: ES_ID(2) + флаги(1), дальше вложенные дескрипторы
+			continue;
+		}
+		if (tag === 0x04) {
+			p += 13; // DecoderConfig: фиксированные 13 байт, дальше вложенный ASC
+			continue;
+		}
+		p += len;
+	}
+}
+
+function makeTorrentManifestLoader(HlsCtor: typeof import('hls.js').default) {
+	// Типы лоадера у hls.js громоздкие, а нам нужен только перехват onSuccess.
+	// eslint-disable-next-line @typescript-eslint/no-explicit-any
+	type AnyLoader = new (...args: any[]) => { load(context: any, config: any, callbacks: any): any };
+	const Base = HlsCtor.DefaultConfig.loader as unknown as AnyLoader;
+	class RewritingLoader extends Base {
+		// eslint-disable-next-line @typescript-eslint/no-explicit-any
+		load(context: any, config: any, callbacks: any) {
+			const orig = callbacks.onSuccess;
+			// eslint-disable-next-line @typescript-eslint/no-explicit-any
+			callbacks.onSuccess = (response: any, stats: any, ctx: any, details: any) => {
+				if (typeof response?.data === 'string') {
+					response.data = response.data.replaceAll('mp4a.40.1', 'mp4a.40.2');
+				} else if (response?.data instanceof ArrayBuffer) {
+					patchAacMainToLc(new Uint8Array(response.data));
+				}
+				if (typeof response?.playlist === 'string') {
+					response.playlist = response.playlist.replaceAll('mp4a.40.1', 'mp4a.40.2');
+				}
+				orig(response, stats, ctx, details);
+			};
+			return super.load(context, config, callbacks);
+		}
+	}
+	return RewritingLoader as unknown as typeof HlsCtor.DefaultConfig.loader;
 }
 
 /** Форматирование времени: 1:02:03 для длинных, 2:03 для коротких. */

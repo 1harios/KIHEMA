@@ -68,9 +68,10 @@ async function jackettSearch(query: string): Promise<JackettResult[]> {
 	return data.Results ?? [];
 }
 
-function pickTorrent(results: JackettResult[], target: ScrapeTarget): JackettResult | null {
+/** Кандидаты в порядке убывания пригодности. Пусто — играть нечего. */
+function rankedTorrents(results: JackettResult[], target: ScrapeTarget): JackettResult[] {
 	const withMagnet = results.filter((r) => r.MagnetUri);
-	if (!withMagnet.length) return null;
+	if (!withMagnet.length) return [];
 
 	const scored = withMagnet.map((r) => {
 		const name = r.Title ?? '';
@@ -89,11 +90,17 @@ function pickTorrent(results: JackettResult[], target: ScrapeTarget): JackettRes
 			// У фильмов без расширения в названии внутри может оказаться что угодно.
 			score -= 15;
 		}
+		// gst-эндпоинт TorrServer транскодирует только Matroska/WebM: раздача с
+		// AVI/MP4 даст 502 «unsupported container» на любом запросе манифеста.
+		// Расширение в названии бывает не всегда, поэтому это лишь порядок —
+		// окончательный брак по контейнеру ставит pickVideoFile.
+		if (/\.(avi|mp4|m4v|mov|ts)$/i.test(name)) score -= 200;
+		else if (/\.(mkv|webm)$/i.test(name)) score += 25;
 		return { r, score };
 	});
 
 	scored.sort((a, b) => b.score - a.score);
-	return scored[0]?.r ?? null;
+	return scored.map((s) => s.r);
 }
 
 /* ------------------------------- TorrServer ------------------------------- */
@@ -123,7 +130,9 @@ async function torrentFiles(hash: string): Promise<TorrFile[]> {
 
 /** Имя файла в раздаче может не совпадать с названием раздачи. */
 function pickVideoFile(files: TorrFile[], target: ScrapeTarget): TorrFile | null {
-	const videos = files.filter((f) => VIDEO_RE.test(f.path));
+	// gst-сборка TorrServer транскодирует только Matroska/WebM — прочие
+	// контейнеры (AVI/MP4/TS) дают 502 «unsupported container» и не играбельны.
+	const videos = files.filter((f) => /\.(mkv|webm)$/i.test(f.path));
 	if (!videos.length) return null;
 
 	if (target.type === 'show') {
@@ -131,12 +140,7 @@ function pickVideoFile(files: TorrFile[], target: ScrapeTarget): TorrFile | null
 		const ep = videos.find((f) => episodeInTitle(f.path, target.season ?? 1, e));
 		if (ep) return ep;
 	}
-	// gst-сборка TorrServer транскодирует только Matroska/WebM; AVI/MP4 она
-	// отвергает, поэтому MKV строго выше остальных контейнеров.
-	const containerRank = (p: string) => (/\.(mkv|webm)$/i.test(p) ? 0 : 1);
-	return videos.sort(
-		(a, b) => containerRank(a.path) - containerRank(b.path) || b.length - a.length
-	)[0];
+	return videos.sort((a, b) => b.length - a.length)[0];
 }
 
 /* ------------------------------ аудиодорожки ------------------------------ */
@@ -181,6 +185,42 @@ async function probeAudioTracks(hash: string, fileId: number): Promise<ProbeTrac
 
 /* ---------------------------------- API ----------------------------------- */
 
+/**
+ * Ждём живой манифест, прежде чем отдавать поток браузеру.
+ *
+ * Возвращает ok только на настоящий 200. 5xx — холодный транскодер, греем
+ * дальше до конца бюджета; 4xx и 502 с текстом «unsupported container» —
+ * однозначный отказ, ждать бессмысленно.
+ */
+async function prewarmManifest(
+	url: () => string,
+	budgetMs = 25_000
+): Promise<{ ok: true } | { ok: false; reason: string }> {
+	const startedAt = Date.now();
+	for (;;) {
+		try {
+			const res = await fetch(url(), { signal: AbortSignal.timeout(12_000) });
+			const text = await res.text().catch(() => '');
+			if (res.ok) return { ok: true };
+			const definitive =
+				(res.status >= 400 && res.status < 500) ||
+				/unsupported container/i.test(text);
+			if (definitive) {
+				return {
+					ok: false,
+					reason: `HTTP ${res.status}${text ? `: ${text.trim().slice(0, 120)}` : ''}`
+				};
+			}
+		} catch {
+			/* сетевой сбой/таймаут — продолжаем греть до конца бюджета */
+		}
+		if (Date.now() + 4_000 > startedAt + budgetMs) {
+			return { ok: false, reason: 'нет 200 за отведённое время' };
+		}
+		await new Promise((r) => setTimeout(r, 3_000));
+	}
+}
+
 /** Ищет тайтл в раздачах и заводит его в локальный TorrServer. */
 export async function torrentPlaybackSource(
 	target: ScrapeTarget
@@ -217,14 +257,29 @@ export async function torrentPlaybackSource(
 		return true;
 	});
 
-	const best = pickTorrent(unique, target);
-	if (!best?.MagnetUri) {
+	const candidates = rankedTorrents(unique, target).slice(0, 5);
+	if (!candidates.length) {
 		console.warn(`[torrents] по «${queries.join('» / «')}» раздач не найдено (${results.length} ответов)`);
 		return null;
 	}
-	console.warn(
-		`[torrents] выбрана раздача «${best.Title}» (сиды: ${best.Seeders ?? 0})`
-	);
+
+	// Раздачи перебираем по пригодности: у лучшей может оказаться неиграбельный
+	// контейнер (AVI) или мёртвые пиры — тогда берём следующую.
+	for (const cand of candidates) {
+		const source = await tryTorrentCandidate(cand, target, brief.title ?? '');
+		if (source) return source;
+	}
+	console.warn(`[torrents] ни одна из ${candidates.length} раздач не дала играбельный поток`);
+	return null;
+}
+
+/** Добавляет одну раздачу и пробует собрать из неё поток. null — берём следующую. */
+async function tryTorrentCandidate(
+	cand: JackettResult,
+	target: ScrapeTarget,
+	fallbackTitle: string
+): Promise<PlaybackSource | null> {
+	console.warn(`[torrents] пробуем раздачу «${cand.Title}» (сиды: ${cand.Seeders ?? 0})`);
 
 	// save_to_db: true — иначе раздача не переживает stat/list и стрим не поднять.
 	const addRes = await fetch(`${config.torrents.serverUrl}/torrents`, {
@@ -232,26 +287,39 @@ export async function torrentPlaybackSource(
 		headers: { 'content-type': 'application/json' },
 		body: JSON.stringify({
 			action: 'add',
-			link: best.MagnetUri,
-			title: best.Title ?? brief.title,
+			link: cand.MagnetUri,
+			title: cand.Title ?? fallbackTitle,
 			save_to_db: true
 		}),
 		signal: AbortSignal.timeout(15_000)
 	});
-	if (!addRes.ok) throw new Error(`TorrServer не принял раздачу: ${addRes.status}`);
+	if (!addRes.ok) {
+		console.warn(`[torrents] TorrServer не принял раздачу: ${addRes.status}`);
+		return null;
+	}
 	const added = (await addRes.json()) as { hash?: string };
 	const hash = (added.hash ?? '').toLowerCase();
-	if (!hash) throw new Error('TorrServer не вернул hash раздачи');
+	if (!hash) {
+		console.warn('[torrents] TorrServer не вернул hash раздачи');
+		return null;
+	}
 
 	// Метаданные читаются из пиров — до 30 секунд на «холодной» раздаче.
+	// Если список файлов уже пришёл, но играбельного (MKV/WebM) видео в нём
+	// нет — ждать дальше бессмысленно, отказываемся сразу.
 	let file: TorrFile | null = null;
 	for (let i = 0; i < 20 && !file; i++) {
-		file = pickVideoFile(await torrentFiles(hash), target);
-		if (!file) await new Promise((r) => setTimeout(r, 1_500));
+		const files = await torrentFiles(hash);
+		if (files.length) {
+			file = pickVideoFile(files, target);
+			if (!file) break;
+		} else {
+			await new Promise((r) => setTimeout(r, 1_500));
+		}
 	}
 	if (!file) {
-		console.warn(`[torrents] ${hash}: видеофайл в раздаче не появился за 30 секунд`);
-		// Раздача без видеофайла бесполезна — убираем, чтобы не засорять базу.
+		console.warn(`[torrents] ${hash}: играбельного видеофайла (MKV/WebM) в раздаче нет`);
+		// Раздача без играбельного файла бесполезна — убираем, чтобы не засорять базу.
 		await fetch(`${config.torrents.serverUrl}/torrents`, {
 			method: 'POST',
 			headers: { 'content-type': 'application/json' },
@@ -269,9 +337,15 @@ export async function torrentPlaybackSource(
 		`${config.torrents.serverUrl}/gst/${hash}/master.m3u8?index=${file.id}&audio=${audio}`;
 
 	// Прогрев: первый запрос манифеста поднимает транскодер и предзагрузку.
-	// Делаем это до probe — на прогретом файле gst-discoverer падает реже,
-	// а браузеру не приходится ждать холодный старт.
-	await fetch(urlFor(0), { signal: AbortSignal.timeout(10_000) }).catch(() => {});
+	// Холодный gst отвечает 502/504, пока транскодер не поднимется (десятки
+	// секунд), а у ошибки нет CORS-заголовков — браузер видит глухой
+	// net::ERR_FAILED. Поэтому ждём настоящий 200 до конца бюджета и отдаём
+	// браузеру только заведомо живой манифест.
+	const warmed = await prewarmManifest(() => urlFor(0));
+	if (!warmed.ok) {
+		console.warn(`[torrents] ${hash}: gst не отдал манифест (${warmed.reason})`);
+		return null;
+	}
 
 	// Каждая аудиодорожка MKV — отдельная «озвучка»: у gst свой поток на
 	// дорожку через audio=N. probe на только что добавленном файле может не

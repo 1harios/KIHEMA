@@ -451,7 +451,19 @@ export class PlayerController {
 					hls.on(HlsCtor.Events.ERROR, (_event, data) => {
 						if (!data.fatal) return;
 						if (data.type === HlsCtor.ErrorTypes.NETWORK_ERROR) {
-							finish(() => reject(new Error(hlsNetworkMessage(data.response?.code))));
+							// 401/403 — доступ закрыт намеренно, повторять бессмысленно.
+							// Всё остальное (5xx, глухой CORS-отказ без кода на холодном
+							// транскодере) может ожить — сообщение в catch запустит авторетрай.
+							const code = data.response?.code;
+							finish(() =>
+								reject(
+									new Error(
+										code === 401 || code === 403
+											? hlsNetworkMessage(code)
+											: 'Сервер потока временно не ответил'
+									)
+								)
+							);
 						} else {
 							// Например, несовместимые кодеки — ждать таймаута бессмысленно.
 							finish(() => reject(new Error('Поток не поддерживается этим браузером')));

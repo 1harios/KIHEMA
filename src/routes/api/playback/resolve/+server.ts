@@ -173,5 +173,5 @@ export const POST: RequestHandler = async ({ request, cookies }) => {
 	error(404, 'Тайтла нет в медиатеке, и CDN-источники его не нашли');
 };
 
-/** Скрейпинг чужих CDN бывает медленным — просим у Vercel больше времени. */
-export const config = { maxDuration: 30 };
+/** Скрейпинг чужих CDN и холодный старт торрент-раздачи бывают медленными. */
+export const config = { maxDuration: 60 };

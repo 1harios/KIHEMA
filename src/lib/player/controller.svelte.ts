@@ -229,7 +229,8 @@ export class PlayerController {
 			// Временный сбой upstream (их API бывает лежит) — переподробуем сами:
 			// как только сервис оживёт, фильм начнётся без участия пользователя.
 			// «Этого тайтла нет в CDN» — детерминированный отказ, ретрай бессмыслен.
-			const transient = /временно не ответили|Сервер ответил 5\d\d/.test(msg);
+			const transient =
+				/временно не ответили|Сервер ответил 5\d\d|не отдаёт HLS-манифест/.test(msg);
 			if (transient && this.retryCount < PlayerController.MAX_AUTO_RETRIES) {
 				this.retryCount += 1;
 				this.status = 'loading';
@@ -249,6 +250,32 @@ export class PlayerController {
 	private clearRetryTimer(): void {
 		if (this.retryTimer) clearTimeout(this.retryTimer);
 		this.retryTimer = null;
+	}
+
+	/**
+	 * Поток оборвался посреди просмотра: движок сам не поднялся.
+	 * Пересобираем источник целиком и возвращаемся на текущую позицию.
+	 */
+	private scheduleStreamRetry(): void {
+		if (this.destroyed || !this.target || this.retryTimer) return;
+		if (this.retryCount >= PlayerController.MAX_AUTO_RETRIES) {
+			this.status = 'error';
+			this.errorMessage = 'Поток оборвался и не восстановился';
+			return;
+		}
+
+		const resumeAt = this.currentTime;
+		this.teardownMedia();
+		// Сбрасываем source: иначе load() примет позицию за «смену озвучки»,
+		// а resumeAt=0 перешибёт локальную позицию из opts.resumeSec.
+		this.source = null;
+		this.retryCount += 1;
+		this.status = 'loading';
+		this.errorMessage = `Поток оборвался, переподключаемся… (попытка ${this.retryCount})`;
+		this.retryTimer = setTimeout(
+			() => void this.load(this.target!, { autoRetry: true, resumeSec: resumeAt }),
+			5_000
+		);
 	}
 
 	/** Переключение озвучки. Публичный вход — им пользуется UI. */
@@ -333,10 +360,10 @@ export class PlayerController {
 		if (source.streamUrl.includes('.mpd')) {
 			const { default: dashjs } = await import('dashjs');
 			const dash = dashjs.MediaPlayer().create() as unknown as DashPlayer;
-			dash.on('error', (e) => {
-				this.status = 'error';
-				const err = typeof e.error === 'string' ? e.error : e.error?.message;
-				this.errorMessage = err ?? 'Поток оборвался и не восстановился';
+			dash.on('error', () => {
+				// dash.js сам не восстанавливается после сбоя сегмента/манифеста —
+				// пересобираем источник целиком (URL у CDN бывают одноразовые).
+				this.scheduleStreamRetry();
 			});
 			dash.initialize(video, source.streamUrl, false);
 			this.dash = dash;
@@ -395,9 +422,11 @@ export class PlayerController {
 						if (!data.fatal || data.type !== HlsCtor.ErrorTypes.NETWORK_ERROR) return;
 						finish(() => reject(new Error(hlsNetworkMessage(data.response?.code))));
 					});
+					// Торрент-раздаче на холодном старте нужно время поднять транскодер —
+					// 12 секунд ей мало, остальным источникам хватает с запасом.
 					timer = setTimeout(
 						() => finish(() => reject(new Error('CDN слишком долго не отдаёт HLS-манифест'))),
-						12_000
+						source.provider === 'torrent' ? 60_000 : 12_000
 					);
 				});
 
@@ -429,13 +458,17 @@ export class PlayerController {
 					// бесконечный цикл при 403/CORS вместо понятной ошибки пользователю.
 					if (data.type === HlsCtor.ErrorTypes.NETWORK_ERROR) {
 						hls.stopLoad();
-						this.status = 'error';
-						this.errorMessage = hlsNetworkMessage(data.response?.code);
+						if (data.response?.code === 401 || data.response?.code === 403) {
+							this.status = 'error';
+							this.errorMessage = hlsNetworkMessage(data.response.code);
+						} else {
+							// Обрыв сегмента/манифеста — пробуем пересобрать источник.
+							this.scheduleStreamRetry();
+						}
 					}
 					else if (data.type === HlsCtor.ErrorTypes.MEDIA_ERROR) hls.recoverMediaError();
 					else {
-						this.status = 'error';
-						this.errorMessage = 'Поток оборвался и не восстановился';
+						this.scheduleStreamRetry();
 					}
 				});
 

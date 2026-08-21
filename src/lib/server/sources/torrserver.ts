@@ -265,6 +265,14 @@ export async function torrentPlaybackSource(
 			? `${target.season ?? 1}x${target.episode ?? 1}`
 			: 'movie';
 
+	const urlFor = (audio: number) =>
+		`${config.torrents.serverUrl}/gst/${hash}/master.m3u8?index=${file.id}&audio=${audio}`;
+
+	// Прогрев: первый запрос манифеста поднимает транскодер и предзагрузку.
+	// Делаем это до probe — на прогретом файле gst-discoverer падает реже,
+	// а браузеру не приходится ждать холодный старт.
+	await fetch(urlFor(0), { signal: AbortSignal.timeout(10_000) }).catch(() => {});
+
 	// Каждая аудиодорожка MKV — отдельная «озвучка»: у gst свой поток на
 	// дорожку через audio=N. probe на только что добавленном файле может не
 	// успеть (gst-discoverer обрывается, пока данные не прогреются) — один
@@ -275,8 +283,6 @@ export async function torrentPlaybackSource(
 		audios = await probeAudioTracks(hash, file.id);
 	}
 	const trackCount = audios?.length ?? 1;
-	const urlFor = (audio: number) =>
-		`${config.torrents.serverUrl}/gst/${hash}/master.m3u8?index=${file.id}&audio=${audio}`;
 
 	const translations: Translation[] = Array.from({ length: trackCount }, (_, i) => {
 		const track = audios?.[i];

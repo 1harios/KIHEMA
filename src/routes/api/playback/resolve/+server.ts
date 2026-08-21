@@ -5,6 +5,7 @@ import { DEMO_SEGMENTS, DEMO_STREAMS, DEMO_TRANSLATIONS } from '$lib/server/demo
 import { getIntroDbSegments, mergeMediaSegments } from '$lib/server/introdb';
 import { readSession } from '$lib/server/session';
 import { scrapePlaybackSource, type ScrapeResult } from '$lib/server/sources/lightstream';
+import { torrentPlaybackSource } from '$lib/server/sources/torrserver';
 import type { MediaType, PlaybackSource } from '$lib/types';
 
 /**
@@ -12,9 +13,9 @@ import type { MediaType, PlaybackSource } from '$lib/types';
  *
  * Порядок источников: демо → архив (открытый контент) → собственная медиатека
  * Jellyfin (если тайтл в индексе и пользователь вошёл) → CDN-скраперы
- * (Cobalt/Titan/Carbon, без логина). Скраперы стоят последними: своя медиатека
- * всегда качественнее чужих CDN, и наоборот — они закрывают весь остальной
- * каталог, до которого Jellyfin не дотягивается.
+ * (Cobalt/Titan/Carbon, без логина) → локальный TorrServer (торренты, только
+ * при TORRSERVER_ENABLED=true). Скраперы стоят перед торрентами: готовый
+ * CDN-поток стартует мгновенно, а раздаче нужно время на сиды и метаданные.
  *
  * О токене: медиа-URL (HLS-сегменты, субтитры, тайлы) уходят в браузер с api_key
  * в query — заголовок туда не поставить. Это тот же подход, что в штатном
@@ -130,6 +131,28 @@ export const POST: RequestHandler = async ({ request, cookies }) => {
 	/* ------------------------------ CDN-скраперы ----------------------------- */
 	const scraped = await tryScrape(body.type, body.tmdbId, body.season, body.episode);
 	if (scraped.source) return json(await withIntroSegments(scraped.source));
+
+	/* ------------------------------- торренты -------------------------------- */
+	// Запасной путь: тайтла нет в играбельных CDN — пробуем локальный TorrServer.
+	// Включается только TORRSERVER_ENABLED=true; сбой не маскирует «нет в CDN».
+	if (siteConfig.torrents.enabled) {
+		try {
+			const torrent = await torrentPlaybackSource({
+				type: body.type,
+				tmdbId: body.tmdbId,
+				season: body.season,
+				episode: body.episode
+			});
+			if (torrent) {
+				return json(await withIntroSegments({ ...torrent, provider: 'torrent' }));
+			}
+		} catch (e) {
+			console.error(
+				'[playback] торрент-источник не сработал:',
+				e instanceof Error ? e.message : e
+			);
+		}
+	}
 
 	/* ----------------------------- понятные ошибки --------------------------- */
 	if (itemId && !session && jellyfinAnon) error(401, 'Нужно войти');

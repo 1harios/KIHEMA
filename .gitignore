@@ -13,3 +13,6 @@ Thumbs.db
 kinema-source.tar.gz
 kinema-redesign.patch
 .claude/
+
+# локальный TorrServer: бинарники и база раздач (торрент-источник)
+torrserver/

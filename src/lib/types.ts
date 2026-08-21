@@ -348,7 +348,7 @@ export interface MediaSegment {
 export type PlayMethod = 'DirectPlay' | 'DirectStream' | 'Transcode';
 
 /** Откуда приехал поток — плееру нужно, чтобы понимать смысл полей. */
-export type PlaybackProvider = 'jellyfin' | 'archive' | 'scrapers';
+export type PlaybackProvider = 'jellyfin' | 'archive' | 'scrapers' | 'torrent';
 
 export interface PlaybackSource {
 	jellyfinItemId: string;

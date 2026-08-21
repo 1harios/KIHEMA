@@ -84,6 +84,25 @@ export const config = {
 			.split(',')
 			.map((s) => s.trim())
 			.filter(Boolean)
+	},
+
+	/* --------------------- торренты: Jackett + TorrServer -------------------- */
+	/*
+	 * Запасной источник, когда в CDN тайтла нет (например, только Origin-locked
+	 * Titan). Поиск раздач идёт через Jackett-совместимый API по названию из
+	 * TMDB, раздача добавляется в ЛОКАЛЬНЫЙ TorrServer (gst-сборка), который на
+	 * лету транскодирует любой контейнер в H.264/AAC HLS с открытым CORS.
+	 *
+	 * Только для локального запуска: браузер обращается к 127.0.0.1 напрямую,
+	 * поэтому на Vercel источник не поднимется. Включается переменной
+	 * TORRSERVER_ENABLED=true; без неё (и при недоступном сервере) цепочка
+	 * разрешения проходит мимо, ничего не ломая.
+	 */
+	torrents: {
+		enabled: env.TORRSERVER_ENABLED === 'true',
+		serverUrl: envOr(env.TORRSERVER_URL, 'http://127.0.0.1:8090').replace(/\/+$/, ''),
+		jackettUrl: envOr(env.JACKETT_URL, 'https://jac.red').replace(/\/+$/, ''),
+		jackettApiKey: (env.JACKETT_API_KEY ?? '').trim()
 	}
 } as const;
 

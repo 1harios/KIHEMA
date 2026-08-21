@@ -147,6 +147,11 @@ function toPlaybackSource(
 	let firstUrl: string | null = null;
 
 	for (const src of sorted) {
+		// Titan отдаёт HLS с obrut.show / чужих воркеров, закрытых по Origin:
+		// браузер получает 403 и плеер зависает с невнятной ошибкой. Не играбельно
+		// без собственного прокси — отсеиваем сразу, чтобы честное «нет в
+		// источниках» показывалось вместо сломанного плеера.
+		if (src.sourceId !== 'carbon') continue;
 		const name = SOURCE_NAMES[src.sourceId] ?? src.sourceId;
 		for (const t of src.translations ?? []) {
 			if (!t.url) continue;

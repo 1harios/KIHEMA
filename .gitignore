@@ -16,3 +16,6 @@ kinema-redesign.patch
 
 # локальный TorrServer: бинарники и база раздач (торрент-источник)
 torrserver/
+
+# туннель cloudflared
+/tunnel/

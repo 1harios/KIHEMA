@@ -7,3 +7,19 @@
 /build
 /.svelte-kit
 /scripts
+
+# Локальный торрент-стриминг и туннель — в деплое не нужны
+/torrserver
+/tunnel
+
+# Мусорные файлы в корне
+Checksum
+Downloading
+Extracting
+Fetching
+Installing
+Latest
+Verifying
+install.cmd
+jail_5_2.txt
+message (2).txt

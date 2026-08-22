@@ -390,6 +390,8 @@ export interface ScrapeTarget {
 	tmdbId: number;
 	season?: number;
 	episode?: number;
+	/** Сквозной номер серии (аниме: «Bleach - 001»). Считается из TMDB. */
+	absEpisode?: number;
 }
 
 export interface PlaybackContext {

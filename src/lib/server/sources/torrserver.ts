@@ -46,11 +46,14 @@ const PUBLIC_TRACKERS = [
 ];
 
 const VIDEO_RE = /\.(mkv|mp4|avi|m4v|mov|webm|ts)$/i;
-// Выбор конкретной серии в названии раздачи: "S01E02", "1x02", "серия 2".
-const episodeInTitle = (name: string, s: number, e: number): boolean =>
+// Выбор конкретной серии в названии раздачи: "S01E02", "1x02", "серия 2",
+// а для аниме — сквозной номер: "Bleach - 001".
+const episodeInTitle = (name: string, s: number, e: number, abs?: number): boolean =>
 	new RegExp(`s0?${s}[\\s._-]*e0?${e}\\b`, 'i').test(name) ||
 	new RegExp(`\\b0?${s}x0?${e}\\b`).test(name) ||
-	new RegExp(`сер[иияя]+\\s*0?${e}\\b`, 'i').test(name);
+	new RegExp(`сер[иияя]+\\s*0?${e}\\b`, 'i').test(name) ||
+	(abs != null &&
+		new RegExp(`(^|[\\s._\\[-])0*${abs}(?=$|[\\s._\\]])`).test(name));
 
 /** Сезонные паки берём, только если раздачи с самой серией не нашлось. */
 const seasonPackRe = (s: number): RegExp =>
@@ -119,7 +122,7 @@ function rankedTorrents(results: JackettResult[], target: ScrapeTarget): Jackett
 			const seasons = seasonsInTitle(name);
 			if (seasons.length && !seasons.includes(s)) score -= 500;
 			// Файл самой серии в разы меньше сезонного пака — старт быстрее.
-			if (episodeInTitle(name, s, e)) score += 40;
+			if (episodeInTitle(name, s, e, target.absEpisode)) score += 40;
 			else if (seasonPackRe(s).test(name)) score += 10;
 			else score -= 25;
 		} else if (!VIDEO_RE.test(name)) {
@@ -137,6 +140,22 @@ function rankedTorrents(results: JackettResult[], target: ScrapeTarget): Jackett
 
 	scored.sort((a, b) => b.score - a.score);
 	return scored.map((s) => s.r);
+}
+
+/** Сквозной номер серии внутри сериала: для аниме-паков «Bleach - 001». */
+async function absoluteEpisode(target: ScrapeTarget): Promise<number | null> {
+	if (!tmdb) return null;
+	try {
+		const d = await tmdb.details('show', target.tmdbId);
+		const s = target.season ?? 1;
+		let abs = target.episode ?? 1;
+		for (const season of d.seasons) {
+			if (season.seasonNumber >= 1 && season.seasonNumber < s) abs += season.episodeCount;
+		}
+		return abs;
+	} catch {
+		return null;
+	}
 }
 
 /* -------------------------------- Torrentio -------------------------------- */
@@ -239,7 +258,7 @@ function pickVideoFile(files: TorrFile[], target: ScrapeTarget): TorrFile | null
 
 	if (target.type === 'show') {
 		const e = target.episode ?? 1;
-		const ep = videos.find((f) => episodeInTitle(f.path, target.season ?? 1, e));
+		const ep = videos.find((f) => episodeInTitle(f.path, target.season ?? 1, e, target.absEpisode));
 		if (ep) return ep;
 		// Пак без совпадения серии — молча подсунёт чужую серию (самый большой
 		// файл не обязан быть нужной серией). Одиночный файл берём как есть.
@@ -652,6 +671,14 @@ export async function torrentPlaybackSource(
 
 	console.log(`[torrents] searching for ${target.type} ${target.tmdbId}...`);
 
+	// Аниме со сквозной нумерацией («Bleach - 001»): считаем сквозной номер
+	// серии, иначе файл внутри пака не совпадёт с «S01E01».
+	if (target.type === 'show' && target.absEpisode == null) {
+		const s = target.season ?? 1;
+		const abs = s === 1 ? target.episode ?? 1 : await absoluteEpisode(target);
+		if (abs != null) target = { ...target, absEpisode: abs };
+	}
+
 	// Раздача, явно выбранная в плеере. Обычно она уже в базе TorrServer
 	// (тайтл смотрели) — тогда источник собирается мгновенно, без трекеров.
 	if (opts.hash) {
@@ -715,11 +742,17 @@ export async function torrentPlaybackSource(
 				failed.push(hash);
 				continue;
 			}
-			const file = pickVideoFile(parseFiles(entry.data), target);
+			const files = parseFiles(entry.data);
+			const file = pickVideoFile(files, target);
 			if (file) {
 				pending.delete(hash);
 				ready.push({ hash, file });
 				console.log(`[torrents] метаданные готовы: ${hash.substring(0, 8)}`);
+			} else if (files.length) {
+				// Метаданные пришли, но играбельного файла для серии нет — брак,
+				// ждать дальше бессмысленно.
+				pending.delete(hash);
+				failed.push(hash);
 			}
 		}
 		if (ready.length || !pending.size || Date.now() > deadline) break;

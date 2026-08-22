@@ -1,16 +1,3 @@
 {
-  "functions": {
-    "src/routes/api/**/*.ts": {
-      "maxDuration": 60
-    }
-  },
-  "regions": ["iad1"],
-  "headers": [
-    {
-      "source": "/api/playback/resolve",
-      "headers": [
-        { "key": "x-max-duration", "value": "60" }
-      ]
-    }
-  ]
+  "regions": ["iad1"]
 }

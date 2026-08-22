@@ -647,9 +647,15 @@ async function tryTorrentCandidate(
 	console.log(`[torrents] Adding to TorrServer...`);
 
 	// save_to_db: true — иначе раздача не переживает stat/list и стрим не поднять.
-	const addRes = await fetch(`${config.torrents.serverUrl}/torrents`, {
+	const fullUrl = `${config.torrents.serverUrl}/torrents`;
+	console.log(`[torrents] Sending POST to TorrServer: ${fullUrl}`);
+	
+	const addRes = await fetch(fullUrl, {
 		method: 'POST',
-		headers: { 'content-type': 'application/json' },
+		headers: { 
+			'content-type': 'application/json',
+			'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36'
+		},
 		body: JSON.stringify({
 			action: 'add',
 			link,
@@ -658,19 +664,20 @@ async function tryTorrentCandidate(
 		}),
 		signal: AbortSignal.timeout(30_000) // Увеличено до 30 сек на добавление
 	}).catch(e => {
-		const isNetworkError = /fetch|network|timeout/i.test(e.message);
+		const isNetworkError = /fetch|network|timeout|ECONNRESET|ENOTFOUND/i.test(e.message);
 		
 		if (isNetworkError) {
 			console.error(`[torrents] NETWORK ERROR connecting to TorrServer:`);
 			console.error('  Server URL:', config.torrents.serverUrl);
+			console.error('  Full URL:', fullUrl);
 			console.error('  Error type:', e.constructor.name);
 			console.error('  Error message:', e.message);
 			console.error('');
 			console.error('  Possible causes:');
-			console.error('    • Cloudflared tunnel not accessible from Vercel cloud');
-			console.error('    • TorrServer (gst) not running');
-			console.error('    • Firewall blocking HTTPS traffic');
-			console.error('    • Cloudflare anti-bot blocking bot user-agents');
+			console.error('    • Cloudflared tunnel down or unreachable from Vercel');
+			console.error('    • TorrServer service not running on port 8080');
+			console.error('    • Firewall blocking outbound HTTPS requests');
+			console.error('    • Cloudflare blocking bot user-agents');
 		}
 		
 		throw new Error(`TorrServer unreachable: ${e.message}`);

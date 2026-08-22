@@ -102,7 +102,13 @@ export const config = {
 		enabled: env.TORRSERVER_ENABLED === 'true',
 		serverUrl: envOr(env.TORRSERVER_URL, 'http://127.0.0.1:8090').replace(/\/+$/, ''),
 		jackettUrl: envOr(env.JACKETT_URL, 'https://jac.red').replace(/\/+$/, ''),
-		jackettApiKey: (env.JACKETT_API_KEY ?? '').trim()
+		jackettApiKey: (env.JACKETT_API_KEY ?? '').trim(),
+		/**
+		 * Torrentio — публичный Stremio-аддон: раздач по IMDb ID больше, чем у
+		 * Jackett, и приходят они со счётчиком сидов. Отключить: TORRENTIO_ENABLED=false.
+		 */
+		torrentioUrl: envOr(env.TORRENTIO_URL, 'https://torrentio.strem.fun').replace(/\/+$/, ''),
+		torrentioEnabled: env.TORRENTIO_ENABLED !== 'false'
 	}
 } as const;
 

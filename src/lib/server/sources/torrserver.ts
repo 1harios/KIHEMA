@@ -1,8 +1,9 @@
 /**
- * Торрент-источник: Jackett (поиск раздач) + локальный TorrServer (стриминг).
+ * Торрент-источник: Jackett + Torrentio (поиск раздач) и локальный TorrServer
+ * (стриминг).
  *
  * Запасной путь для тайтлов, которых нет в играбельных CDN. Цепочка:
- *   1. Jackett-совместимый API ищет раздачу по названию из TMDB;
+ *   1. Jackett ищет по названию из TMDB, Torrentio (Stremio-аддон) — по IMDb ID;
  *   2. лучшая раздача (сиды + размер) добавляется в TorrServer;
  *   3. gst-сборка TorrServer транскодирует файл в H.264/AAC HLS;
  *   4. браузер играет master.m3u8 напрямую — CORS у TorrServer открыт.
@@ -102,6 +103,85 @@ function rankedTorrents(results: JackettResult[], target: ScrapeTarget): Jackett
 
 	scored.sort((a, b) => b.score - a.score);
 	return scored.map((s) => s.r);
+}
+
+/* -------------------------------- Torrentio -------------------------------- */
+
+/**
+ * Torrentio (Stremio-аддон) ищет по IMDb ID и отдаёт раздачи со счётчиком
+ * сидов — покрытие шире Jackett. Нужен только infoHash: магнет собираем сами.
+ */
+interface TorrentioStream {
+	name?: string;
+	title?: string;
+	infoHash?: string;
+}
+
+const tokens = (s?: string | null): string[] =>
+	(s ?? '')
+		.toLowerCase()
+		.split(/[^a-zа-яё0-9]+/i)
+		.filter((w) => w.length > 2 && !/^\d+$/.test(w));
+
+/**
+ * Название раздачи точно про наш тайтл? Torrentio ищет по IMDb ID, но в выдаче
+ * бывают созвучные фильмы (Legionnaires Trail рядом с The Legion): требуем,
+ * чтобы в имени раздачи встретилось полное слово из названия. Jackett же ищет
+ * по тексту и может притащить одноимённый фильм другого года (Одиссея 1997
+ * вместо 2026) — при известном годе брак по нему отсеивается отдельно.
+ */
+function matchesTitle(
+	name: string,
+	titles: (string | null | undefined)[],
+	year?: number
+): boolean {
+	const release = new Set(tokens(name));
+	const titleOk = titles.some((t) => {
+		const tw = tokens(t);
+		if (!tw.length) return false;
+		const longest = tw.reduce((a, b) => (b.length > a.length ? b : a));
+		return release.has(longest);
+	});
+	if (!titleOk) return false;
+
+	if (year) {
+		const years = [...name.matchAll(/\b(19|20)\d{2}\b/g)].map((m) => Number(m[0]));
+		if (years.length && !years.includes(year)) return false;
+	}
+	return true;
+}
+
+function parseSeeders(text?: string): number {
+	const m = (text ?? '').match(/\uD83D\uDC64\s*[\uFE0F]?\s*(\d+)/u) ?? (text ?? '').match(/(\d+)\s*(?=seeds)/i);
+	return m ? Number(m[1]) : 0;
+}
+
+async function torrentioSearch(target: ScrapeTarget, imdbId: string): Promise<JackettResult[]> {
+	if (!config.torrents.torrentioEnabled) return [];
+
+	// Сериалы адресуются суффиксом «:сезон:серия» после IMDb ID.
+	const id =
+		target.type === 'show'
+			? `${imdbId}:${target.season ?? 1}:${target.episode ?? 1}`
+			: imdbId;
+	const res = await fetch(`${config.torrents.torrentioUrl}/stream/movie/${id}.json`, {
+		headers: { accept: 'application/json', 'user-agent': UA },
+		signal: AbortSignal.timeout(15_000)
+	});
+	if (!res.ok) throw new Error(`Torrentio ответил ${res.status}`);
+	const data = (await res.json()) as { streams?: TorrentioStream[] };
+
+	return (data.streams ?? [])
+		.filter((s): s is TorrentioStream & { infoHash: string } => Boolean(s.infoHash))
+		.map((s) => {
+			// Название раздачи в первой строке title; дальше — счётчики и трекеры.
+			const title = (s.title ?? '').split('\n')[0];
+			return {
+				Title: title,
+				Seeders: parseSeeders(s.title),
+				MagnetUri: `magnet:?xt=urn:btih:${s.infoHash}`
+			} satisfies JackettResult;
+		});
 }
 
 /* ------------------------------- TorrServer ------------------------------- */
@@ -287,21 +367,57 @@ export async function torrentPlaybackSource(
 		.filter((t): t is string => Boolean(t))
 		.map((t) => (target.type === 'movie' && brief.year ? `${t} ${brief.year}` : t));
 
-	const results = (
-		await Promise.all(
+	// Torrentio идёт параллельно с Jackett: он ищет по IMDb ID и часто находит
+	// то, чего на Jackett-трекерах нет (и наоборот).
+	const imdbId = await tmdb.externalIds(target.type, target.tmdbId).then(
+		(r) => r.imdbId,
+		() => undefined
+	);
+	const torrentioPromise = imdbId
+		? torrentioSearch(target, imdbId).catch((e) => {
+				console.warn('[torrents] Torrentio не ответил:', e instanceof Error ? e.message : e);
+				return [] as JackettResult[];
+			})
+		: Promise.resolve([] as JackettResult[]);
+
+	const [torrentioResults, jackettResults] = await Promise.all([
+		torrentioPromise,
+		Promise.all(
 			queries.map((q) =>
 				jackettSearch(q).catch((e) => {
 					console.warn(`[torrents] Jackett-поиск «${q}» не удался:`, e instanceof Error ? e.message : e);
 					return [] as JackettResult[];
 				})
 			)
-		)
-	).flat();
+		).then((r) => r.flat())
+	]);
+
+	// Torrentio ищет по IMDb ID, но выдаёт и созвучные тайтлы (Legionnaires
+	// Trail рядом с The Legion) — брак по названию и году. Jackett ищет по
+	// тексту и может притащить одноимённый фильм другого года (Одиссея 1997
+	// вместо 2026) — название там бывает транслитом, проверяем только год.
+	const movieYear = target.type === 'movie' ? brief.year : undefined;
+	const torrentioMatched = torrentioResults.filter((r) =>
+		matchesTitle(r.Title ?? '', [brief.title, brief.originalTitle], movieYear)
+	);
+	const jackettMatched = jackettResults.filter((r) => {
+		if (!movieYear) return true;
+		const years = [...(r.Title ?? '').matchAll(/\b(19|20)\d{2}\b/g)].map((m) => Number(m[0]));
+		return !years.length || years.includes(movieYear);
+	});
+
+	const results = [...torrentioMatched, ...jackettMatched];
 
 	const seen = new Set<string>();
 	const unique = results.filter((r) => {
-		if (!r.MagnetUri || seen.has(r.MagnetUri)) return false;
-		seen.add(r.MagnetUri);
+		if (!r.MagnetUri) return false;
+		// Одна раздача может прийти из обоих источников: сравниваем по infoHash.
+		const key =
+			r.InfoHash?.toLowerCase() ??
+			r.MagnetUri.match(/btih:([a-z0-9]{40}|[a-z2-7]{32})/i)?.[1]?.toLowerCase() ??
+			r.MagnetUri;
+		if (seen.has(key)) return false;
+		seen.add(key);
 		return true;
 	});
 

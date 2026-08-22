@@ -16,7 +16,13 @@
  * локально, без похода на сервер. Carbon отдаёт DASH — подключаем dash.js.
  */
 
-import type { MediaType, PlaybackProvider, PlaybackSource, Translation } from '$lib/types';
+import type {
+	MediaType,
+	PlaybackProvider,
+	PlaybackSource,
+	TorrentOption,
+	Translation
+} from '$lib/types';
 
 type Hls = import('hls.js').default;
 
@@ -102,6 +108,8 @@ export class PlayerController {
 
 	activeTranslationId = $state<string | null>(null);
 	activeSubtitleId = $state<string | null>(null);
+	/** Доступные раздачи торрента — для меню выбора раздачи/качества. */
+	torrentOptions = $state<TorrentOption[]>([]);
 	/** Сдвиг субтитров в секундах — бывает нужен, когда дорожка не совпадает с релизом. */
 	subtitleOffset = $state(0);
 
@@ -161,6 +169,8 @@ export class PlayerController {
 		opts: {
 			audioStreamIndex?: number;
 			autoRetry?: boolean;
+			/** Конкретная раздача (infoHash), выбранная пользователем в меню. */
+			torrent?: string;
 			/**
 			 * Позиция, с которой начать, если сервер её не знает. Локальный
 			 * прогресс из браузера: на Vercel Jellyfin не подключён, и
@@ -198,6 +208,7 @@ export class PlayerController {
 					episode: target.episode,
 					audioStreamIndex: opts.audioStreamIndex,
 					startPositionSec: resumeAt,
+					torrent: opts.torrent,
 					exclude: [...this.deadProviders]
 				})
 			});
@@ -212,6 +223,11 @@ export class PlayerController {
 
 			this.source = source;
 			this.activeTranslationId = source.activeTranslationId;
+
+			// Для торрента подтягиваем список раздач для меню выбора — фоном,
+			// чтобы не задерживать старт. У остальных провайдеров его нет.
+			if (source.provider === 'torrent') void this.refreshTorrentOptions();
+			else this.torrentOptions = [];
 
 			/*
 				Порядок важен. resumeAt — смена озвучки на ходу, там позиция точнее
@@ -324,6 +340,40 @@ export class PlayerController {
 
 		// Пользователь смотрел — пусть смотрит дальше, без лишнего клика.
 		if (wasPlaying) void this.play();
+	}
+
+	/* ------------------------------ выбор раздачи ---------------------------- */
+
+	/** Список раздач для меню выбора. Не критичен для воспроизведения. */
+	private async refreshTorrentOptions(): Promise<void> {
+		const t = this.target;
+		if (!t) return;
+		try {
+			const res = await fetch('/api/playback/torrents', {
+				method: 'POST',
+				headers: { 'content-type': 'application/json' },
+				body: JSON.stringify({
+					type: t.type,
+					tmdbId: t.tmdbId,
+					season: t.season,
+					episode: t.episode
+				})
+			});
+			if (!res.ok) return;
+			const data = (await res.json()) as { options: TorrentOption[] };
+			if (!this.destroyed) this.torrentOptions = data.options ?? [];
+		} catch {
+			// Останемся без меню выбора — не страшно.
+		}
+	}
+
+	/**
+	 * Сменить раздачу (она же — «качество» у торрентов). load() сам вернёт
+	 * на текущую позицию: resumeAt берётся из currentTime живого источника.
+	 */
+	switchTorrent(hash: string): void {
+		if (!this.target || hash === this.source?.mediaSourceId) return;
+		void this.load(this.target, { torrent: hash });
 	}
 
 	private async attach(source: PlaybackSource, startAt: number): Promise<void> {

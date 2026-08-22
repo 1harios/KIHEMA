@@ -369,6 +369,21 @@ export interface PlaybackSource {
 	provider?: PlaybackProvider;
 }
 
+/**
+ * Раздача для выбора в плеере (локальная TorrServer / Torrentio / Jackett).
+ * «Качество» у торрентов — это выбор другой раздачи, gst не умеет менять
+ * битрейт на лету, поэтому в меню она показывается отдельным списком.
+ */
+export interface TorrentOption {
+	hash: string;
+	title: string;
+	seeders: number;
+	sizeMb?: number;
+	source: 'local' | 'torrentio' | 'jackett';
+	/** Разрешение из названия: '1080p', '720p'… null, когда не распознать. */
+	quality: string | null;
+}
+
 export interface PlaybackContext {
 	title: string;
 	originalTitle?: string;

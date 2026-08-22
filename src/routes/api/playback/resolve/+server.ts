@@ -45,6 +45,8 @@ export const POST: RequestHandler = async ({ request, cookies }) => {
 		startPositionSec?: number;
 		/** Источники, которые уже доказанно не сработали — плеер просит их пропустить. */
 		exclude?: PlaybackProvider[];
+		/** infoHash раздачи, выбранной пользователем в плеере, — идём сразу в торренты. */
+		torrent?: string;
 	};
 
 	if (!body?.tmdbId || !body?.type) error(400, 'Не переданы type и tmdbId');
@@ -129,6 +131,27 @@ export const POST: RequestHandler = async ({ request, cookies }) => {
 				e instanceof Error ? e.message : e
 			);
 		}
+	}
+
+	/* ------------------------- явный выбор раздачи --------------------------- */
+	// Пользователь выбрал конкретную раздачу в плеере (смена качества/озвучки):
+	// CDN и Jellyfin пропускаем — запрос явно про торрент.
+	if (body.torrent && siteConfig.torrents.enabled && !excluded.has('torrent')) {
+		try {
+			const torrent = await torrentPlaybackSource(
+				{ type: body.type, tmdbId: body.tmdbId, season: body.season, episode: body.episode },
+				{ hash: body.torrent }
+			);
+			if (torrent) {
+				return json(await withIntroSegments({ ...torrent, provider: 'torrent' }));
+			}
+		} catch (e) {
+			console.error(
+				'[playback] выбранная раздача не завелась:',
+				e instanceof Error ? e.message : e
+			);
+		}
+		error(404, 'Выбранная раздача не запустилась — попробуйте другую');
 	}
 
 	/* ------------------------------ CDN-скраперы ----------------------------- */

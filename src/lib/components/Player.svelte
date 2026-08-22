@@ -1068,6 +1068,31 @@
 								{/each}
 							{/if}
 
+							{#if player.torrentOptions.length > 1}
+								<p class="psection">
+									<Icon name="magnet" size={13} />
+									Раздача · качество
+								</p>
+								{#each player.torrentOptions as o (o.hash)}
+									<button
+										type="button"
+										onclick={() => player.switchTorrent(o.hash)}
+										class="pitem {o.hash === player.source?.mediaSourceId ? 'pitem-on' : ''}"
+									>
+										{#if o.quality}
+											<span class="tnum rounded bg-white/10 px-1 text-[10px] font-semibold uppercase leading-4">
+												{o.quality}
+											</span>
+										{/if}
+										<span class="flex-1 truncate leading-snug" title={o.title}>{o.title}</span>
+										{#if o.seeders > 0}
+											<span class="tnum text-[11px] text-white/35">▲{o.seeders}</span>
+										{/if}
+										{#if o.hash === player.source?.mediaSourceId}<Icon name="check" size={14} />{/if}
+									</button>
+								{/each}
+							{/if}
+
 							{#if player.translations.length > 1}
 								<p class="psection">
 									<Icon name="volume" size={13} />

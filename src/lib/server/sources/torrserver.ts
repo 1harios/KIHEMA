@@ -14,7 +14,7 @@
  */
 
 import { config, tmdb } from '$lib/server/config';
-import type { MediaType, PlaybackSource, Translation } from '$lib/types';
+import type { MediaType, PlaybackSource, TorrentOption, Translation } from '$lib/types';
 import type { ScrapeTarget } from './lightstream';
 
 interface JackettResult {
@@ -23,6 +23,8 @@ interface JackettResult {
 	Seeders?: number;
 	MagnetUri?: string;
 	InfoHash?: string;
+	/** Откуда пришёл результат — для пометки в списке раздач. */
+	Source?: 'torrentio' | 'jackett';
 }
 
 interface TorrFile {
@@ -40,6 +42,14 @@ interface TorrListEntry {
 
 const UA =
 	'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36';
+
+/** Публичные анонсеры для голых magnet: метаданные приходят за секунды, а не минуты через DHT. */
+const PUBLIC_TRACKERS = [
+	'http://bt2.t-ru.org/ann?magnet',
+	'udp://tracker.opentrackr.org:1337/announce',
+	'udp://open.demonii.com:1337/announce',
+	'udp://explodie.org:6969/announce'
+];
 
 const VIDEO_RE = /\.(mkv|mp4|avi|m4v|mov|webm|ts)$/i;
 // Выбор конкретной серии в названии раздачи: "S01E02", "1x02", "серия 2".
@@ -205,7 +215,7 @@ async function torrentFiles(hash: string): Promise<TorrFile[]> {
 		method: 'POST',
 		headers: { 'content-type': 'application/json' },
 		body: JSON.stringify({ action: 'list' }),
-		signal: AbortSignal.timeout(5_000)
+		signal: AbortSignal.timeout(8_000)
 	});
 	if (!res.ok) return [];
 	const list = (await res.json()) as TorrListEntry[];
@@ -279,12 +289,12 @@ async function probeAudioTracks(hash: string, fileId: number): Promise<ProbeTrac
  */
 async function prewarmManifest(
 	url: () => string,
-	budgetMs = 20_000
+	budgetMs = 12_000
 ): Promise<{ ok: true } | { ok: false; reason: string }> {
 	const startedAt = Date.now();
 	for (;;) {
 		try {
-			const res = await fetch(url(), { signal: AbortSignal.timeout(10_000) });
+			const res = await fetch(url(), { signal: AbortSignal.timeout(5_000) });
 			const text = await res.text().catch(() => '');
 			if (res.ok) return { ok: true };
 			const definitive =
@@ -309,57 +319,155 @@ async function prewarmManifest(
 /** Маркер раздач, добавленных вручную: «kinema:<тип>:<tmdbId>:…». */
 const localMark = (target: ScrapeTarget): string => `kinema:${target.type}:${target.tmdbId}:`;
 
+/** Локальная раздача тайтла из базы TorrServer, если есть. */
+async function findLocalEntry(
+	target: ScrapeTarget
+): Promise<{ hash: string; title: string; data?: string } | null> {
+	try {
+		const res = await fetch(`${config.torrents.serverUrl}/torrents`, {
+			method: 'POST',
+			headers: { 'content-type': 'application/json' },
+			body: JSON.stringify({ action: 'list' }),
+			signal: AbortSignal.timeout(8_000)
+		});
+		if (!res.ok) return null;
+		const list = (await res.json()) as TorrListEntry[];
+		const mark = localMark(target);
+		const entry = list.find((t) => (t.title ?? '').startsWith(mark) && t.hash);
+		return entry
+			? { hash: entry.hash!.toLowerCase(), title: entry.title ?? '', data: entry.data }
+			: null;
+	} catch {
+		return null;
+	}
+}
+
 /**
  * Локальная библиотека: раздачи, добавленные в TorrServer вручную с маркером
  * «kinema:<тип>:<tmdbId>:» в названии. Они уже в базе — трекеры искать не
  * нужно, источник берётся напрямую.
  */
 async function localLibrarySource(target: ScrapeTarget): Promise<PlaybackSource | null> {
+	const entry = await findLocalEntry(target);
+	if (!entry) return null;
+	const file = pickVideoFile(parseFiles(entry.data), target);
+	if (!file) {
+		console.warn(`[torrents] локальная раздача ${entry.hash}: играбельного файла нет`);
+		return null;
+	}
+	console.warn(`[torrents] найдена локальная раздача: ${entry.hash}`);
+	return buildSource(entry.hash, file, target);
+}
+
+/** Раздача уже в базе TorrServer (смотрели раньше) — источник без трекеров. */
+async function sourceByHash(hash: string, target: ScrapeTarget): Promise<PlaybackSource | null> {
 	try {
 		const res = await fetch(`${config.torrents.serverUrl}/torrents`, {
 			method: 'POST',
 			headers: { 'content-type': 'application/json' },
 			body: JSON.stringify({ action: 'list' }),
-			signal: AbortSignal.timeout(5_000)
+			signal: AbortSignal.timeout(8_000)
 		});
 		if (!res.ok) return null;
 		const list = (await res.json()) as TorrListEntry[];
-		const mark = localMark(target);
-		const entry = list.find((t) => (t.title ?? '').startsWith(mark) && t.hash);
+		const entry = list.find((t) => (t.hash ?? '').toLowerCase() === hash.toLowerCase());
 		if (!entry) return null;
-
-		const hash = entry.hash!.toLowerCase();
 		const file = pickVideoFile(parseFiles(entry.data), target);
-		if (!file) {
-			console.warn(`[torrents] локальная раздача ${hash}: играбельного файла нет`);
-			return null;
-		}
-		console.warn(`[torrents] найдена локальная раздача: ${hash}`);
-		return buildSource(hash, file, target);
-	} catch (e) {
-		console.warn(
-			'[torrents] локальная библиотека недоступна:',
-			e instanceof Error ? e.message : e
-		);
+		if (!file) return null;
+		return buildSource(hash.toLowerCase(), file, target);
+	} catch {
 		return null;
 	}
 }
 
-/** Ищет тайтл в раздачах и заводит его в локальный TorrServer. */
-export async function torrentPlaybackSource(
-	target: ScrapeTarget
-): Promise<PlaybackSource | null> {
-	if (!config.torrents.enabled || !tmdb) return null;
+/* ------------------------- список раздач для выбора ------------------------ */
+
+/** Раздача в списке выбора плеера. */
+export type TorrOption = TorrentOption;
+
+const qualityFromTitle = (t: string): string | null => {
+	const m = t.match(/\b(2160p|1080p|720p|576p|480p)\b/i);
+	if (m) return m[1].toLowerCase();
+	if (/\b(4k|uhd)\b/i.test(t)) return '2160p';
+	return null;
+};
+
+const resultHash = (r: JackettResult): string | null =>
+	r.InfoHash?.toLowerCase() ??
+	r.MagnetUri?.match(/btih:([a-z0-9]{40}|[a-z2-7]{32})/i)?.[1]?.toLowerCase() ??
+	null;
+
+const searchCache = new Map<string, { at: number; found: CandidateSearch }>();
+const SEARCH_TTL_MS = 10 * 60 * 1000;
+const searchKey = (t: ScrapeTarget) =>
+	`${t.type}:${t.tmdbId}:${t.season ?? ''}x${t.episode ?? ''}`;
+
+/**
+ * Раздачи тайтла для выбора в плеере: локальная (если есть) + результаты
+ * поиска. Поиск общий с torrentPlaybackSource и кешируется на 10 минут —
+ * открытие меню и последующий выбор не дёргают трекеры заново.
+ */
+export async function listTorrentOptions(target: ScrapeTarget): Promise<TorrOption[]> {
+	if (!config.torrents.enabled) return [];
+
+	const options: TorrOption[] = [];
+
+	// Локальная база и трекеры идут параллельно: меню открывается быстрее,
+	// а медленный поиск не ждёт списка TorrServer и наоборот.
+	const [local, found] = await Promise.all([
+		findLocalEntry(target),
+		searchCandidates(target).catch((e) => {
+			console.warn('[torrents] поиск раздач не удался:', e instanceof Error ? e.message : e);
+			return null;
+		})
+	]);
+
+	if (local) {
+		options.push({
+			hash: local.hash,
+			title: local.title.replace(localMark(target), '') || 'Локальная раздача',
+			seeders: 0,
+			source: 'local',
+			quality: qualityFromTitle(local.title)
+		});
+	}
+
+	for (const r of found?.candidates ?? []) {
+		const hash = resultHash(r);
+		if (!hash) continue;
+		options.push({
+			hash,
+			title: r.Title ?? '',
+			seeders: r.Seeders ?? 0,
+			sizeMb: r.Size ? Math.round(r.Size / (1024 * 1024)) : undefined,
+			source: r.Source ?? 'jackett',
+			quality: qualityFromTitle(r.Title ?? '')
+		});
+	}
+	return options;
+}
+
+/* ---------------------------------- поиск ---------------------------------- */
+
+interface CandidateSearch {
+	briefTitle: string;
+	queries: string[];
+	candidates: JackettResult[];
+}
+
+/** Torrentio + Jackett с фильтрами и ранжированием. Топ-8 кандидатов. */
+async function searchCandidates(target: ScrapeTarget): Promise<CandidateSearch | null> {
+	if (!tmdb) return null;
+
+	const key = searchKey(target);
+	const hit = searchCache.get(key);
+	if (hit && hit.at + SEARCH_TTL_MS > Date.now()) return hit.found;
 
 	const brief = await tmdb.brief(target.type, target.tmdbId).catch(() => null);
 	if (!brief) {
 		console.warn('[torrents] TMDB не отдал название тайтла — поиск раздач невозможен');
 		return null;
 	}
-
-	// Локальная библиотека быстрее трекеров: раздача уже в базе TorrServer.
-	const local = await localLibrarySource(target);
-	if (local) return local;
 
 	// Русские трекеры индексируют локализованные названия, западные — оригинал:
 	// ищем по обоим параллельно и склеиваем без дубликатов по magnet.
@@ -380,7 +488,7 @@ export async function torrentPlaybackSource(
 			})
 		: Promise.resolve([] as JackettResult[]);
 
-	const [torrentioResults, jackettResults] = await Promise.all([
+	const [torrentioResults, jackettResultsRaw] = await Promise.all([
 		torrentioPromise,
 		Promise.all(
 			queries.map((q) =>
@@ -391,13 +499,15 @@ export async function torrentPlaybackSource(
 			)
 		).then((r) => r.flat())
 	]);
+	const jackettResults = jackettResultsRaw.map((r) => ({ ...r, Source: 'jackett' as const }));
+	const torrentioTagged = torrentioResults.map((r) => ({ ...r, Source: 'torrentio' as const }));
 
 	// Torrentio ищет по IMDb ID, но выдаёт и созвучные тайтлы (Legionnaires
 	// Trail рядом с The Legion) — брак по названию и году. Jackett ищет по
 	// тексту и может притащить одноимённый фильм другого года (Одиссея 1997
 	// вместо 2026) — название там бывает транслитом, проверяем только год.
 	const movieYear = target.type === 'movie' ? brief.year : undefined;
-	const torrentioMatched = torrentioResults.filter((r) =>
+	const torrentioMatched = torrentioTagged.filter((r) =>
 		matchesTitle(r.Title ?? '', [brief.title, brief.originalTitle], movieYear)
 	);
 	const jackettMatched = jackettResults.filter((r) => {
@@ -412,31 +522,74 @@ export async function torrentPlaybackSource(
 	const unique = results.filter((r) => {
 		if (!r.MagnetUri) return false;
 		// Одна раздача может прийти из обоих источников: сравниваем по infoHash.
-		const key =
-			r.InfoHash?.toLowerCase() ??
-			r.MagnetUri.match(/btih:([a-z0-9]{40}|[a-z2-7]{32})/i)?.[1]?.toLowerCase() ??
-			r.MagnetUri;
+		const key = resultHash(r) ?? r.MagnetUri;
 		if (seen.has(key)) return false;
 		seen.add(key);
 		return true;
 	});
 
-	const candidates = rankedTorrents(unique, target).slice(0, 5);
+	const candidates = rankedTorrents(unique, target).slice(0, 8);
 	if (!candidates.length) {
 		console.warn(`[torrents] по «${queries.join('» / «')}» раздач не найдено (${results.length} ответов)`);
-		return null;
 	}
+	const found: CandidateSearch = { briefTitle: brief.title ?? '', queries, candidates };
+	// Пустой результат часто значит «трекеры не ответили» — не кешируем, чтобы
+	// следующий запрос попробовал снова, а не отдавал заглушку 10 минут.
+	if (candidates.length) {
+		if (searchCache.size > 200) {
+			const oldest = searchCache.keys().next().value;
+			if (oldest) searchCache.delete(oldest);
+		}
+		searchCache.set(key, { at: Date.now(), found });
+	}
+	return found;
+}
+
+/** Ищет тайтл в раздачах и заводит его в локальный TorrServer. */
+export async function torrentPlaybackSource(
+	target: ScrapeTarget,
+	opts: { hash?: string } = {}
+): Promise<PlaybackSource | null> {
+	if (!config.torrents.enabled || !tmdb) return null;
+
+	// Раздача, явно выбранная в плеере. Обычно она уже в базе TorrServer
+	// (тайтл смотрели) — тогда источник собирается мгновенно, без трекеров.
+	if (opts.hash) {
+		const direct = await sourceByHash(opts.hash, target);
+		if (direct) return direct;
+		console.warn(`[torrents] выбранной раздачи ${opts.hash} нет в базе — ищем на трекерах`);
+
+		// Пользователь просил КОНКРЕТНУЮ раздачу: подменять её локальной из
+		// библиотеки нельзя — иначе «сменил качество» тихо вернёт старую.
+		const found = await searchCandidates(target);
+		const wanted = found?.candidates.find(
+			(c) => resultHash(c) === opts.hash!.toLowerCase()
+		);
+		if (!wanted) return null;
+		return tryTorrentCandidate(wanted, target, found!.briefTitle);
+	}
+
+	// Локальная библиотека быстрее трекеров, но поиск кешируется и нужен меню —
+	// запускаем оба пути параллельно, локальную раздачу берём первой.
+	const [local, found] = await Promise.all([
+		localLibrarySource(target),
+		searchCandidates(target)
+	]);
+	if (local) return local;
+	if (!found || !found.candidates.length) return null;
+
+	const pool = found.candidates;
 
 	// Кандидаты запускаем параллельно: пока один собирает метаданные и пиров,
 	// другие уже греются. Кто первым дал играбельный манифест — тот и поток.
 	// Последовательный перебор здесь не годится: каждая раздача может ждать
 	// метаданные десятки секунд, а у функции жёсткий лимит времени.
-	const attempts = candidates.map((cand) =>
-		tryTorrentCandidate(cand, target, brief.title ?? '').catch(() => null)
+	const attempts = pool.slice(0, 5).map((cand) =>
+		tryTorrentCandidate(cand, target, found.briefTitle).catch(() => null)
 	);
 	const source = await firstNonNull(attempts);
 	if (!source) {
-		console.warn(`[torrents] ни одна из ${candidates.length} раздач не дала играбельный поток`);
+		console.warn(`[torrents] ни одна из ${Math.min(pool.length, 5)} раздач не дала играбельный поток`);
 	}
 	return source;
 }
@@ -469,12 +622,12 @@ async function tryTorrentCandidate(
 ): Promise<PlaybackSource | null> {
 	console.warn(`[torrents] пробуем раздачу «${cand.Title}» (сиды: ${cand.Seeders ?? 0})`);
 
-	// Голые magnet (rutracker через Jackett приходит без трекеров) полагаются
-	// только на DHT — из дата-центра метаданные так собираются минутами и не
-	// успевают в лимит. Работающий announce отдаёт их за секунды.
+	// Голые magnet (rutracker через Jackett и Torrentio приходят без трекеров)
+	// полагаются только на DHT — из дата-центра метаданные так собираются
+	// минутами и не успевают в лимит. Работающий announce отдаёт их за секунды.
 	let link = cand.MagnetUri!;
 	if (!/[?&]tr=/.test(link)) {
-		link += `&tr=${encodeURIComponent('http://bt2.t-ru.org/ann?magnet')}`;
+		for (const tr of PUBLIC_TRACKERS) link += `&tr=${encodeURIComponent(tr)}`;
 	}
 
 	// save_to_db: true — иначе раздача не переживает stat/list и стрим не поднять.
@@ -504,13 +657,13 @@ async function tryTorrentCandidate(
 	// идут параллельно. Если список файлов уже пришёл, но играбельного
 	// (MKV/WebM) видео в нём нет — ждать дальше бессмысленно, отказываемся сразу.
 	let file: TorrFile | null = null;
-	for (let i = 0; i < 12 && !file; i++) {
+	for (let i = 0; i < 8 && !file; i++) {
 		const files = await torrentFiles(hash);
 		if (files.length) {
 			file = pickVideoFile(files, target);
 			if (!file) break;
 		} else {
-			await new Promise((r) => setTimeout(r, 1_500));
+			await new Promise((r) => setTimeout(r, 1_250));
 		}
 	}
 	if (!file) {

@@ -61,20 +61,58 @@ const seasonPackRe = (s: number): RegExp =>
 
 /* --------------------------------- Jackett -------------------------------- */
 
+const JACKETT_TTL_MS = 10 * 60_000;
+const jackettCache = new Map<string, { at: number; results: JackettResult[] }>();
+/** Одновременные одинаковые запросы склеиваются в один поход к Jackett. */
+const jackettInflight = new Map<string, Promise<JackettResult[]>>();
+
 async function jackettSearch(query: string): Promise<JackettResult[]> {
-	const u = new URL(
-		`${config.torrents.jackettUrl}/api/v2.0/indexers/all/results`
-	);
+	const key = query.toLowerCase();
+	const hit = jackettCache.get(key);
+	if (hit && hit.at + JACKETT_TTL_MS > Date.now()) return hit.results;
+	const running = jackettInflight.get(key);
+	if (running) return running;
+
+	const promise = jackettFetch(query);
+	jackettInflight.set(key, promise);
+	try {
+		const results = await promise;
+		// Пусто — чаще «трекеры не ответили», чем «раздач нет»: не кешируем.
+		if (results.length) {
+			if (jackettCache.size > 200) {
+				const oldest = jackettCache.keys().next().value;
+				if (oldest) jackettCache.delete(oldest);
+			}
+			jackettCache.set(key, { at: Date.now(), results });
+		}
+		return results;
+	} finally {
+		jackettInflight.delete(key);
+	}
+}
+
+async function jackettFetch(query: string): Promise<JackettResult[]> {
+	const u = new URL(`${config.torrents.jackettUrl}/api/v2.0/indexers/all/results`);
 	u.searchParams.set('Query', query);
 	if (config.torrents.jackettApiKey) u.searchParams.set('apikey', config.torrents.jackettApiKey);
 
-	const res = await fetch(u, {
-		headers: { accept: 'application/json', 'user-agent': UA },
-		signal: AbortSignal.timeout(15_000)
-	});
-	if (!res.ok) throw new Error(`Jackett ответил ${res.status}`);
-	const data = (await res.json()) as { Results?: JackettResult[] };
-	return data.Results ?? [];
+	// 429 — Jackett отбивается от частых запросов; ждём и пробуем снова.
+	for (let attempt = 0; attempt < 3; attempt++) {
+		const res = await fetch(u, {
+			headers: { accept: 'application/json', 'user-agent': UA },
+			signal: AbortSignal.timeout(15_000)
+		});
+		if (res.status === 429 || res.status >= 500) {
+			const waitMs = 2_000 * (attempt + 1);
+			console.warn(`[torrents] Jackett ответил ${res.status} на «${query}», ждём ${waitMs / 1000}с`);
+			await new Promise((r) => setTimeout(r, waitMs));
+			continue;
+		}
+		if (!res.ok) throw new Error(`Jackett ответил ${res.status}`);
+		const data = (await res.json()) as { Results?: JackettResult[] };
+		return data.Results ?? [];
+	}
+	throw new Error(`Jackett трижды отказал по «${query}»`);
 }
 
 /**

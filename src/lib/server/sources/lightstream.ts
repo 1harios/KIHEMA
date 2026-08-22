@@ -27,8 +27,7 @@ import type { MediaType, PlaybackSource, SubtitleTrack, Translation } from '$lib
 const SOURCE_NAMES: Record<string, string> = {
 	cobalt: 'Cobalt',
 	titan: 'Titan',
-	carbon: 'Carbon',
-	streamprovider: 'StreamProvider' // Новый публичный API
+	carbon: 'Carbon'
 };
 
 /*
@@ -45,57 +44,7 @@ const SOURCE_NAMES: Record<string, string> = {
  */
 
 const UA =
-	'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/151.0.0.0 Safari/537.36';
-
-/** StreamProvider — публичный API https://streamprovider.byteful.me/ */
-async function fetchStreamProvider(target: ScrapeTarget): Promise<UpstreamSource[]> {
-	const u = new URL('https://streamprovider.byteful.me/');
-	u.searchParams.set('tmdbId', String(target.tmdbId));
-	u.searchParams.set('type', target.type);
-	if (target.season && target.episode) {
-		u.searchParams.set('season', String(target.season));
-		u.searchParams.set('episode', String(target.episode));
-	}
-
-	const res = await fetch(u, { signal: AbortSignal.timeout(10_000) });
-	if (!res.ok) return [];
-
-	const text = await res.text();
-	let parsed: any;
-	try {
-		parsed = JSON.parse(text);
-	} catch {
-		return [];
-	}
-
-	// StreamProvider отдаёт данные в формате { urls: [...] } или { translations: [...] }
-	if (parsed.urls && Array.isArray(parsed.urls)) {
-		return [{
-			sourceId: 'streamprovider',
-			translations: parsed.urls.map((url: string, i: number) => ({
-				id: String(i),
-				label: 'оригинал',
-				url,
-				type: url.endsWith('.m3u8') ? 'hls' : 'dash'
-			}))
-		}];
-	}
-	
-	if (parsed.translations && Array.isArray(parsed.translations)) {
-		return [{
-			sourceId: 'streamprovider',
-			translations: parsed.translations.map((t: any) => ({
-				id: t.id || String(t.index),
-				label: t.label || 'оригинал',
-				url: t.url,
-				type: t.type as 'hls' | 'dash',
-				uhd: t.uhd
-			}))
-		}];
-	}
-	
-	return [];
-}
+	'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36';
 
 interface UpstreamTranslation {
 	id: string;
@@ -198,8 +147,11 @@ function toPlaybackSource(
 	let firstUrl: string | null = null;
 
 	for (const src of sorted) {
-		// streamprovider отдаёт потоки напрямую, без Origin-блоков: разрешаем всем источникам.
-		// carbon — через lightstream.ws, но браузер получает CORS-error: тоже разрешаем.
+		// Titan отдаёт HLS с obrut.show / чужих воркеров, закрытых по Origin:
+		// браузер получает 403 и плеер зависает с невнятной ошибкой. Не играбельно
+		// без собственного прокси — отсеиваем сразу, чтобы честное «нет в
+		// источниках» показывалось вместо сломанного плеера.
+		if (src.sourceId !== 'carbon') continue;
 		const name = SOURCE_NAMES[src.sourceId] ?? src.sourceId;
 		for (const t of src.translations ?? []) {
 			if (!t.url) continue;
@@ -376,13 +328,9 @@ export async function scrapePlaybackSource(target: ScrapeTarget): Promise<Scrape
 			() => undefined
 		);
 		
-		// Параллельный запрос к StreamProvider и upstream (lightstream.ws)
-		const [sources1] = await Promise.all([
-			fetchStreamProvider(target),
-			fetchUpstream(target, imdbId).catch(() => []) // upstream optional
-		]);
-		
-		const sources = [...sources1]; // только StreamProvider
+		// CDN скраперы защищены Cloudflare anti-bot (Cloudflare Challenge) — serverless не проходит.
+		// Используем только upstream (lightstream.ws), параллельно пробовать бессмысленно.
+		const sources = await fetchUpstream(target, imdbId);
 		
 		const source = toPlaybackSource(target, sources);
 

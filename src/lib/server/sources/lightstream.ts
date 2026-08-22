@@ -208,6 +208,88 @@ function toPlaybackSource(
 	};
 }
 
+/* ------------------------- живость потока (пре-чек) ------------------------ */
+
+const XML_ENTITIES: Record<string, string> = {
+	'&amp;': '&',
+	'&lt;': '<',
+	'&gt;': '>',
+	'&quot;': '"',
+	'&apos;': "'"
+};
+const decodeXml = (s: string): string => s.replace(/&\w+;/g, (e) => XML_ENTITIES[e] ?? e);
+
+/** Дёшево проверяем кусок потока: интересует только статус и первые байты. */
+async function probeStream(url: string): Promise<boolean> {
+	try {
+		const res = await fetch(url, { signal: AbortSignal.timeout(6_000) });
+		if (!res.ok) return false;
+		const buf = await res.arrayBuffer();
+		return buf.byteLength > 200;
+	} catch {
+		return false;
+	}
+}
+
+function firstSegmentUrl(manifestUrl: string, playlist: string): string | null {
+	const base = manifestUrl.slice(0, manifestUrl.lastIndexOf('/') + 1);
+
+	if (playlist.includes('<MPD')) {
+		// DASH: проверяем init-сегмент — он обязателен и лёгонький.
+		const baseUrl = playlist.match(/<BaseURL>([^<]+)<\/BaseURL>/)?.[1];
+		const init = playlist.match(/initialization="([^"]+)"/)?.[1];
+		if (!init) return null;
+		return new URL(decodeXml(init), baseUrl ? decodeXml(baseUrl) : base).href;
+	}
+
+	// HLS: мастер-плейлист ссылается на медийные, медийный — на сегменты.
+	for (const line of playlist.split('\n')) {
+		const l = line.trim();
+		if (!l || l.startsWith('#')) continue;
+		const sub = new URL(l, manifestUrl).href;
+		if (l.endsWith('.m3u8') || l.includes('.m3u8?')) {
+			return sub; // мастер: сначала дойдём до медийного плейлиста
+		}
+		return sub; // медийный плейлист: первая не-директива и есть сегмент
+	}
+	return null;
+}
+
+/**
+ * Жив ли поток на самом деле. Carbon регулярно отдаёт живой манифест при мёртвых
+ * сегментах (410) — без проверки браузер 15–20 секунд бьётся в мёртвый CDN,
+ * прежде чем плеер сам уйдёт на торренты. Проверяем на сервере: манифест +
+ * один настоящий кусок (init у DASH, сегмент/дочерний плейлист у HLS).
+ */
+async function streamAlive(url: string): Promise<boolean> {
+	let manifest: string;
+	try {
+		const res = await fetch(url, { signal: AbortSignal.timeout(6_000) });
+		if (!res.ok) return false;
+		manifest = await res.text();
+	} catch {
+		return false;
+	}
+
+	const probeUrl = await (async (): Promise<string | null> => {
+		const first = firstSegmentUrl(url, manifest);
+		if (!first) return null;
+		if (first.endsWith('.m3u8') || first.includes('.m3u8?')) {
+			// Мастер-плейлист: делаем ещё один шаг до реального сегмента.
+			try {
+				const res = await fetch(first, { signal: AbortSignal.timeout(6_000) });
+				if (!res.ok) return null;
+				return firstSegmentUrl(first, await res.text());
+			} catch {
+				return null;
+			}
+		}
+		return first;
+	})();
+
+	return probeUrl ? probeStream(probeUrl) : false;
+}
+
 /* ---------------------------------- API ----------------------------------- */
 
 export interface ScrapeResult {
@@ -247,6 +329,18 @@ export async function scrapePlaybackSource(target: ScrapeTarget): Promise<Scrape
 		);
 		const sources = await fetchUpstream(target, imdbId);
 		const source = toPlaybackSource(target, sources);
+
+		if (source && !(await streamAlive(source.streamUrl))) {
+			// Манифест есть, а сегменты мертвы (Carbon делает так регулярно).
+			// Не отдаём такой поток: браузер бьётся в него 15–20 секунд, прежде
+			// чем уйти на торренты. Отказ «как будто нет в CDN» — резолвер
+			// сразу продолжит цепочку. Кеш 5 минут: CDN может ожить.
+			console.warn('[scrapers] поток найден, но сегменты не отвечают — пропускаем');
+			cacheSet(key, null);
+			rememberNegative(key);
+			return { source: null, reason: 'not_found' };
+		}
+
 		cacheSet(key, source);
 		if (!source) rememberNegative(key);
 		return { source, reason: source ? 'ok' : 'not_found' };

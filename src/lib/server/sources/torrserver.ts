@@ -222,23 +222,6 @@ function parseFiles(data?: string): TorrFile[] {
 	}
 }
 
-/**
- * Файлы раздачи. action:"stat" у MatriX отвечает пусто — файлы приходят только
- * в action:"list" внутри сериализованного поля data.
- */
-async function torrentFiles(hash: string): Promise<TorrFile[]> {
-	const res = await fetch(`${config.torrents.serverUrl}/torrents`, {
-		method: 'POST',
-		headers: { 'content-type': 'application/json' },
-		body: JSON.stringify({ action: 'list' }),
-		signal: AbortSignal.timeout(8_000)
-	});
-	if (!res.ok) return [];
-	const list = (await res.json()) as TorrListEntry[];
-	const entry = list.find((t) => (t.hash ?? '').toLowerCase() === hash);
-	return parseFiles(entry?.data);
-}
-
 /** Имя файла в раздаче может не совпадать с названием раздачи. */
 function pickVideoFile(files: TorrFile[], target: ScrapeTarget): TorrFile | null {
 	// gst-сборка TorrServer транскодирует только Matroska/WebM — прочие
@@ -397,6 +380,87 @@ async function sourceByHash(hash: string, target: ScrapeTarget): Promise<Playbac
 	} catch {
 		return null;
 	}
+}
+
+/** Общий запрос списка раздач из базы TorrServer. */
+async function fetchTorrentList(): Promise<TorrListEntry[]> {
+	try {
+		const res = await fetch(`${config.torrents.serverUrl}/torrents`, {
+			method: 'POST',
+			headers: { 'content-type': 'application/json' },
+			body: JSON.stringify({ action: 'list' }),
+			signal: AbortSignal.timeout(8_000)
+		});
+		if (!res.ok) return [];
+		return (await res.json()) as TorrListEntry[];
+	} catch {
+		return [];
+	}
+}
+
+/** Добавляет кандидата в TorrServer и возвращает его hash. */
+async function addCandidate(cand: JackettResult, fallbackTitle: string): Promise<string | null> {
+	if (!cand.MagnetUri) return null;
+	// Голый магнет без трекеров надеется только на DHT — дописываем публичные
+	// анонсеры, чтобы метаданные пришли за секунды.
+	let link = cand.MagnetUri;
+	if (link.startsWith('magnet:') && !/[?&]tr=/.test(link)) {
+		link += PUBLIC_TRACKERS.map((t) => `&tr=${encodeURIComponent(t)}`).join('');
+	}
+	try {
+		const res = await fetch(`${config.torrents.serverUrl}/torrents`, {
+			method: 'POST',
+			headers: { 'content-type': 'application/json', 'user-agent': UA },
+			body: JSON.stringify({
+				action: 'add',
+				link,
+				title: cand.Title || fallbackTitle,
+				save_to_db: true
+			}),
+			signal: AbortSignal.timeout(15_000)
+		});
+		if (!res.ok) return null;
+		return resultHash(cand);
+	} catch (error) {
+		console.warn(
+			'[torrents] не удалось добавить раздачу:',
+			error instanceof Error ? error.message : error
+		);
+		return null;
+	}
+}
+
+/** Уже добавленный в TorrServer торрент: ждём метаданные и собираем источник. */
+async function tryPreparedCandidate(
+	hash: string,
+	target: ScrapeTarget
+): Promise<PlaybackSource | null> {
+	const h = hash.toLowerCase();
+	for (let i = 0; i < 4; i++) {
+		const entry = (await fetchTorrentList()).find(
+			(t) => (t.hash ?? '').toLowerCase() === h
+		);
+		const file = entry ? pickVideoFile(parseFiles(entry.data), target) : null;
+		if (file) return buildSource(h, file, target);
+		await new Promise((r) => setTimeout(r, 2_500));
+	}
+	return null;
+}
+
+/** Убирает заведённые на время поиска раздачи, не трогая те, что были в базе. */
+async function removeTorrents(hashes: string[], existing: Set<string>): Promise<void> {
+	await Promise.all(
+		[...new Set(hashes)]
+			.filter((h) => h && !existing.has(h))
+			.map((h) =>
+				fetch(`${config.torrents.serverUrl}/torrents`, {
+					method: 'POST',
+					headers: { 'content-type': 'application/json' },
+					body: JSON.stringify({ action: 'rem', hash: h }),
+					signal: AbortSignal.timeout(5_000)
+				}).catch(() => {})
+			)
+	);
 }
 
 /* ------------------------- список раздач для выбора ------------------------ */
@@ -594,7 +658,9 @@ export async function torrentPlaybackSource(
 			(c) => resultHash(c) === opts.hash!.toLowerCase()
 		);
 		if (!wanted) return null;
-		return tryTorrentCandidate(wanted, target, found!.briefTitle);
+		const hash = await addCandidate(wanted, found!.briefTitle);
+		if (!hash) return null;
+		return tryPreparedCandidate(hash, target);
 	}
 
 	// Локальная библиотека быстрее трекеров, но поиск кешируется и нужен меню —
@@ -610,159 +676,69 @@ export async function torrentPlaybackSource(
 	}
 
 	const pool = found.candidates.slice(0, 8);
-	console.log(`[torrents] ${pool.length} candidates to try`);
+	console.log(`[torrents] ${pool.length} candidates to try — добавляем все параллельно`);
 
-	// Кандидаты запускаем ПОСЛЕДОВАТЕЛЬНО по очереди — TorrServer (gst) может
-	// обрабатывать только ONE torrent одновременно. Параллельные запросы приводят
-	// к таймаутам и сбоям. Делаем паузу 3 сек между попытками.
-	for (const cand of pool) {
-		console.log(`[torrents] Trying candidate #${pool.indexOf(cand) + 1}/${pool.length}: ${cand.Title?.substring(0, 50)}...`);
-		const source = await tryTorrentCandidate(cand, target, found.briefTitle);
+	// Снимок хешей, уже сидящих в базе: уборка в конце не должна трогать чужое.
+	const before = new Set(
+		(await fetchTorrentList()).map((t) => (t.hash ?? '').toLowerCase()).filter(Boolean)
+	);
+
+	// Метаданные TorrServer тянет сам после add — заводим всех кандидатов сразу,
+	// потом опрашиваем готовность одним запросом списка вместо N последовательных.
+	const added = await Promise.all(
+		pool.map(async (cand, i) => ({ i, hash: await addCandidate(cand, found.briefTitle) }))
+	);
+	const pending = new Set(added.map((a) => a.hash).filter((h): h is string => Boolean(h)));
+	if (!pending.size) {
+		console.warn('[torrents] ни одного кандидата не удалось добавить в TorrServer');
+		return null;
+	}
+
+	const ready: { hash: string; file: TorrFile }[] = [];
+	const failed: string[] = [];
+	const deadline = Date.now() + 12_000;
+	for (;;) {
+		const list = await fetchTorrentList();
+		for (const hash of [...pending]) {
+			const entry = list.find((t) => (t.hash ?? '').toLowerCase() === hash);
+			if (!entry) {
+				// Раздача выпала из списка — TorrServer не смог её подхватить.
+				pending.delete(hash);
+				failed.push(hash);
+				continue;
+			}
+			const file = pickVideoFile(parseFiles(entry.data), target);
+			if (file) {
+				pending.delete(hash);
+				ready.push({ hash, file });
+				console.log(`[torrents] метаданные готовы: ${hash.substring(0, 8)}`);
+			}
+		}
+		if (ready.length || !pending.size || Date.now() > deadline) break;
+		await new Promise((r) => setTimeout(r, 2_500));
+	}
+
+	// Прогрев gst — строго по очереди (транскодер один), но в порядке рейтинга.
+	const order = new Map(added.map((a) => [a.hash ?? '', a.i]));
+	ready.sort((a, b) => (order.get(a.hash) ?? 99) - (order.get(b.hash) ?? 99));
+	console.log(
+		`[torrents] метаданные: ${ready.length} готово, ${pending.size} не дождались, ${failed.length} мертвы`
+	);
+
+	for (const { hash, file } of ready) {
+		const source = await buildSource(hash, file, target);
 		if (source) {
-			console.log(`[torrents] SUCCESS with candidate #${pool.indexOf(cand) + 1}`);
+			const ours = [...failed, ...pending, ...ready.map((r) => r.hash)].filter(
+				(h) => h !== hash
+			);
+			await removeTorrents(ours, before);
 			return source;
 		}
-		console.log(`[torrents] Candidate #${pool.indexOf(cand) + 1} failed, retrying in 3s...`);
-		
-		// Пауза между попытками чтобы TorrServer успел обработать предыдущую
-		await new Promise(r => setTimeout(r, 3_000));
 	}
 
-	console.warn(`[torrents] Все ${pool.length} попытки не дали поток`);
+	console.warn(`[torrents] ${ready.length} раздач с метаданными не дали поток`);
+	await removeTorrents([...failed, ...pending], before);
 	return null;
-}
-
-/** Первый не-null результат; null, если все закончились без результата. */
-async function firstNonNull<T>(promises: Promise<T | null>[]): Promise<T | null> {
-	let winner: T | null = null;
-	let done = 0;
-	await new Promise<void>((resolve) => {
-		for (const p of promises) {
-			void p.then((v) => {
-				done += 1;
-				if (v && winner === null) {
-					winner = v;
-					resolve();
-				} else if (done === promises.length) {
-					resolve();
-				}
-			});
-		}
-	});
-	return winner;
-}
-
-/** Добавляет одну раздачу и пробует собрать из неё поток. null — берём следующую. */
-async function tryTorrentCandidate(
-	cand: JackettResult,
-	target: ScrapeTarget,
-	fallbackTitle: string
-): Promise<PlaybackSource | null> {
-	console.log(`[torrents] START adding candidate ${cand.Title?.substring(0, 40)}`);
-
-	// Раздачи с трекеров часто несут только мёртвые announce (retracker.local —
-	// локальный трекер провайдера, из дата-центра недоступен). Докидываем живые
-	// публичные трекеры всегда: дубли безвредны, а метаданные придут быстрее.
-	let link = cand.MagnetUri!;
-	for (const tr of PUBLIC_TRACKERS) link += `&tr=${encodeURIComponent(tr)}`;
-
-	const startTime = Date.now();
-	console.log(`[torrents] Adding to TorrServer...`);
-
-	// save_to_db: true — иначе раздача не переживает stat/list и стрим не поднять.
-	const fullUrl = `${config.torrents.serverUrl}/torrents`;
-	console.log(`[torrents] Sending POST to TorrServer: ${fullUrl}`);
-	
-	const addRes = await fetch(fullUrl, {
-		method: 'POST',
-		headers: { 
-			'content-type': 'application/json',
-			'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36'
-		},
-		body: JSON.stringify({
-			action: 'add',
-			link,
-			title: cand.Title ?? fallbackTitle,
-			save_to_db: true
-		}),
-		signal: AbortSignal.timeout(30_000) // Увеличено до 30 сек на добавление
-	}).catch(e => {
-		const isNetworkError = /fetch|network|timeout|ECONNRESET|ENOTFOUND/i.test(e.message);
-		
-		if (isNetworkError) {
-			console.error(`[torrents] NETWORK ERROR connecting to TorrServer:`);
-			console.error('  Server URL:', config.torrents.serverUrl);
-			console.error('  Full URL:', fullUrl);
-			console.error('  Error type:', e.constructor.name);
-			console.error('  Error message:', e.message);
-			console.error('');
-			console.error('  Possible causes:');
-			console.error('    • Cloudflared tunnel down or unreachable from Vercel');
-			console.error('    • TorrServer service not running on port 8080');
-			console.error('    • Firewall blocking outbound HTTPS requests');
-			console.error('    • Cloudflare blocking bot user-agents');
-		}
-		
-		throw new Error(`TorrServer unreachable: ${e.message}`);
-	});
-
-	const addDuration = Date.now() - startTime;
-	console.log(`[torrents] TorrServer add took ${addDuration}ms, status: ${addRes.status}`);
-
-	if (!addRes.ok) {
-		const errorText = await addRes.text().catch(() => 'no error text');
-		console.error(`[torrents] TorrServer add failed (${addRes.status}): ${errorText.substring(0, 100)}`);
-		return null;
-	}
-
-	const added = (await addRes.json()) as { hash?: string };
-	const hash = (added.hash ?? '').toLowerCase();
-	if (!hash) {
-		console.warn('[torrents] TorrServer did not return hash for this torrent');
-		return null;
-	}
-
-	console.log(`[torrents] Added successfully, hash: ${hash.substring(0, 8)}...`);
-
-	// Метаданные читаются из пиров; бюджет ограничен лимитом функции, кандидаты
-	// идут последовательно. Живые раздачи отдают файлы за секунды; мёртвые
-	// (сиды не отвечают из дата-центра) не отдадут и за минуту — долгое
-	// ожидание одного кандидата съедает общий бюджет и не пускает остальных.
-	console.log(`[torrents] Fetching torrent files...`);
-	const filesStartTime = Date.now();
-	let file: TorrFile | null = null;
-	for (let i = 0; i < 2 && !file; i++) {
-		const filesFetchStart = Date.now();
-		const files = await torrentFiles(hash);
-		const filesFetchDuration = Date.now() - filesFetchStart;
-		
-		console.log(`[torrents] Files fetch ${i+1}: ${files.length} files in ${filesFetchDuration}ms`);
-		
-		if (files.length) {
-			file = pickVideoFile(files, target);
-			if (!file) {
-				console.warn(`[torrents] No video file found in ${files.length} files, retrying...`);
-				await new Promise(r => setTimeout(r, 2_500));
-			}
-		} else {
-			await new Promise(r => setTimeout(r, 2_500));
-		}
-	}
-	const totalFilesFetchDuration = Date.now() - filesStartTime;
-	console.log(`[torrents] Total files fetch took ${totalFilesFetchDuration}ms`);
-	
-	if (!file) {
-		console.warn(`[torrents] ${hash}: no playable video file found after ${totalFilesFetchDuration}ms`);
-		// Раздача без играбельного файла бесполезна — убираем, чтобы не засорять базу.
-		await fetch(`${config.torrents.serverUrl}/torrents`, {
-			method: 'POST',
-			headers: { 'content-type': 'application/json' },
-			body: JSON.stringify({ action: 'rem', hash })
-		}).catch(() => {});
-		return null;
-	}
-
-	return buildSource(hash, file, target);
 }
 
 /** Прогревает манифест раздачи и собирает из неё PlaybackSource. */

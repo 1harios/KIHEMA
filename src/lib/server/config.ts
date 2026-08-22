@@ -75,6 +75,13 @@ export const config = {
 		jackettApiKey: (env.JACKETT_API_KEY ?? '').trim(),
 		torrentioUrl: envOr(env.TORRENTIO_URL, 'https://torrentio.strem.fun').replace(/\/+$/, ''),
 		torrentioEnabled: env.TORRENTIO_ENABLED !== 'false'
+	},
+
+	/* ------------------- совместный просмотр: сервер комнат ------------------ */
+	party: {
+		/** Второй quick-туннель VPS, URL публикуется в party-tunnel.txt. */
+		discoveryUrl:
+			(env.PARTY_DISCOVERY_URL ?? '').trim() || 'http://213.165.34.107:8091/party-tunnel.txt'
 	}
 } as const;
 
@@ -108,6 +115,35 @@ export async function getTorrentServerUrl(): Promise<string> {
 		/* discovery недоступен — работаем с запасным адресом */
 	}
 	return config.torrents.serverUrl;
+}
+
+/* ------------------------ адрес сервера комнат (live) ---------------------- */
+
+let partyCache: { at: number; url: string } | null = null;
+
+/**
+ * Актуальный адрес WebSocket-сервера комнат. В отличие от TorrServer запасного
+ * адреса нет: если туннель не опубликован, совместный просмотр недоступен и
+ * функция вернёт null — клиент покажет это явно.
+ */
+export async function getPartyServerUrl(): Promise<string | null> {
+	if (partyCache && partyCache.at + TUNNEL_TTL_MS > Date.now()) return partyCache.url;
+	try {
+		const res = await fetch(config.party.discoveryUrl, {
+			signal: AbortSignal.timeout(3_000),
+			cache: 'no-store'
+		});
+		if (res.ok) {
+			const url = (await res.text()).trim().replace(/\/+$/, '');
+			if (/^https?:\/\/[a-z0-9.-]+/.test(url)) {
+				partyCache = { at: Date.now(), url };
+				return url;
+			}
+		}
+	} catch {
+		/* сервер комнат недоступен */
+	}
+	return null;
 }
 
 /* ------------------------------- синглтоны -------------------------------- */

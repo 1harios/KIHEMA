@@ -23,9 +23,27 @@
 	 */
 
 	import { untrack } from 'svelte';
-	import { goto } from '$app/navigation';
+	import { beforeNavigate, goto } from '$app/navigation';
 	import { page } from '$app/state';
 	import { keyHelp, registerKeys } from '$lib/keys.svelte';
+	import {
+		party,
+		inParty,
+		isHost,
+		applyRemote,
+		pushToast,
+		savedName,
+		sharedPosition,
+		withPartyParams,
+		join as partyJoin,
+		leave as partyLeave,
+		sendBuffering,
+		sendGoto,
+		sendState,
+		sendSeek,
+		sendTranslation
+	} from '$lib/party.svelte';
+	import type { RoomSnapshot } from '$lib/party.svelte';
 	import {
 		PLAYBACK_RATES,
 		PlayerController,
@@ -35,6 +53,8 @@
 	import { progress } from '$lib/progress.svelte';
 	import type { PlaybackContext } from '$lib/types';
 	import Icon from './ui/Icon.svelte';
+	import PartyPanel from './party/PartyPanel.svelte';
+	import PartySetup from './party/PartySetup.svelte';
 
 	interface Props {
 		target: PlayerTarget;
@@ -435,7 +455,7 @@
 					title: 'Следующая серия',
 					group: 'Плеер',
 					run: withWake(() => {
-						if (nextHref) void goto(nextHref);
+						if (nextHref && !partyLocked) goWithParty(nextHref);
 					})
 				},
 				{
@@ -568,7 +588,9 @@
 			player.status === 'ready' &&
 			!player.paused &&
 			player.duration > 60 &&
-			player.duration - player.displayTime <= AUTOPLAY_WINDOW_SEC
+			player.duration - player.displayTime <= AUTOPLAY_WINDOW_SEC &&
+			// В комнате серию двигает только хост — гости идут за его goto.
+			(!inParty() || isHost())
 	);
 
 	// Новая серия — чистый лист для отсчёта.
@@ -596,10 +618,193 @@
 			nextCountdown = left;
 			if (left === 0) {
 				clearInterval(id);
-				void goto(href);
+				goWithParty(href);
 			}
 		}, 250);
 		return () => clearInterval(id);
+	});
+
+	/* --------------------------- совместный просмотр --------------------------- */
+
+	let partySetupOpen = $state(false);
+	let partyPanelOpen = $state(false);
+	/** Не-хосту закрыты озвучка, раздача и переход к следующей серии. */
+	const partyLocked = $derived(inParty() && !isHost());
+	let joinAttempted: string | null = null;
+
+	/** Что сообщить комнате о текущем воспроизведении (создание/вход). */
+	function partySnapshot(): RoomSnapshot {
+		const params = new URLSearchParams(page.url.searchParams);
+		params.delete('room');
+		const q = params.size ? `?${params}` : '';
+		return {
+			targetHref: page.url.pathname + q,
+			positionSec: player.currentTime,
+			paused: player.paused,
+			translationLabel: player.activeTranslation?.label ?? null
+		};
+	}
+
+	// Зашли по ссылке-приглашению (?room=CODE) — подключаемся сами.
+	$effect(() => {
+		const code = page.url.searchParams.get('room');
+		if (!code || code === joinAttempted || inParty() || party.status === 'connecting') return;
+		joinAttempted = code;
+		void partyJoin(code, savedName() || 'Гость', null).catch(() => {
+			// Комнаты нет — убираем код из адреса, чтобы не зациклиться.
+			const u = new URL(location.href);
+			u.searchParams.delete('room');
+			history.replaceState(history.state, '', u);
+		});
+	});
+
+	// Ушли со страницы просмотра (не на другую серию) — покидаем комнату.
+	beforeNavigate(({ to }) => {
+		if (!inParty()) return;
+		if (!to?.url.pathname.endsWith('/watch')) partyLeave();
+	});
+
+	// Локальные действия видео отправляем в комнату.
+	$effect(() => {
+		const v = videoEl;
+		if (!v) return;
+		const onPlay = () => {
+			if (party.status === 'in-room') sendState(false, player.currentTime);
+		};
+		const onPause = () => {
+			if (party.status === 'in-room') sendState(true, player.currentTime);
+		};
+		const onSeeked = () => {
+			if (party.status === 'in-room') sendSeek(v.currentTime);
+		};
+		const onWaiting = () => sendBuffering(true);
+		const onPlaying = () => sendBuffering(false);
+		v.addEventListener('play', onPlay);
+		v.addEventListener('pause', onPause);
+		v.addEventListener('seeked', onSeeked);
+		v.addEventListener('waiting', onWaiting);
+		v.addEventListener('playing', onPlaying);
+		return () => {
+			v.removeEventListener('play', onPlay);
+			v.removeEventListener('pause', onPause);
+			v.removeEventListener('seeked', onSeeked);
+			v.removeEventListener('waiting', onWaiting);
+			v.removeEventListener('playing', onPlaying);
+		};
+	});
+
+	// Применяем чужие пауза/пуск/перемотка. Свои сообщения не применяем.
+	$effect(() => {
+		const st = party.roomState;
+		const by = party.stateBy;
+		if (!st || !by || by === party.selfId || party.status !== 'in-room') return;
+		if (player.status !== 'ready') return;
+		if (st.paused && !player.paused) {
+			applyRemote(true, st.positionSec, () => void videoEl?.pause());
+		} else if (!st.paused && player.paused) {
+			applyRemote(false, st.positionSec, () => void player.play());
+		}
+		const shared = sharedPosition();
+		if (Math.abs(shared - player.currentTime) > 1.5) {
+			applyRemote(st.paused, shared, () => player.seek(shared));
+		}
+	});
+
+	// Источник догрузился (или вошли в комнату на готовом) — выравниваемся.
+	$effect(() => {
+		if (player.status !== 'ready' || !inParty()) return;
+		const st = untrack(() => party.roomState);
+		if (!st) return;
+		const shared = untrack(() => sharedPosition());
+		if (st.paused && !player.paused) applyRemote(true, shared, () => void videoEl?.pause());
+		if (Math.abs(shared - player.currentTime) > 1.5) {
+			applyRemote(st.paused, shared, () => player.seek(shared));
+		}
+	});
+
+	// Отстающий (плохой интернет) догоняет комнату, остальные его не ждут.
+	$effect(() => {
+		if (party.status !== 'in-room') return;
+		const id = setInterval(() => {
+			if (player.status !== 'ready' || player.paused) return;
+			const st = party.roomState;
+			if (!st || st.paused) return;
+			const shared = sharedPosition();
+			if (Math.abs(shared - player.currentTime) > 3) {
+				applyRemote(false, shared, () => player.seek(shared));
+				pushToast('Синхронизация: догоняем комнату');
+			}
+		}, 1000);
+		return () => clearInterval(id);
+	});
+
+	// Озвучку выбирает хост — повторяем за ним (зависим и от списка дорожек:
+	// источник может догрузиться позже самого события).
+	$effect(() => {
+		const by = party.translationBy;
+		const label = party.roomState?.translationLabel;
+		if (!by || by === party.selfId || !label || party.status === 'idle') return;
+		const match = player.translations.find((t) => t.label === label);
+		if (match && match.id !== player.activeTranslationId) {
+			void player.switchTranslation(match.id);
+		}
+	});
+
+	// Хост сменил фильм/серию — переходим за ним.
+	$effect(() => {
+		const st = party.roomState;
+		const by = party.stateBy;
+		if (!st || !by || by === party.selfId || party.status === 'idle' || !st.targetHref) return;
+		const targetUrl = new URL(st.targetHref, page.url.origin);
+		const params = new URLSearchParams(page.url.searchParams);
+		params.delete('room');
+		const here = page.url.pathname + (params.size ? `?${params}` : '');
+		const there = targetUrl.pathname + (targetUrl.searchParams.size ? `?${targetUrl.searchParams}` : '');
+		if (here !== there) void goto(withPartyParams(st.targetHref));
+	});
+
+	/** Переход, синхронный для комнаты: хост объявляет его всем. */
+	function goWithParty(href: string) {
+		if (inParty() && isHost()) sendGoto(href);
+		void goto(withPartyParams(href));
+	}
+
+	let partyCount = $state(0);
+
+	// Отсчёт «3-2-1» для синхронного старта.
+	$effect(() => {
+		const until = party.countdownUntil;
+		if (!until) {
+			partyCount = 0;
+			return;
+		}
+		let fired = false;
+		const tick = () => {
+			const leftMs = until - Date.now();
+			partyCount = Math.max(0, Math.ceil(leftMs / 1000));
+			if (leftMs <= 0 && !fired) {
+				fired = true;
+				const shared = sharedPosition();
+				applyRemote(false, shared, () => {
+					player.seek(shared);
+					void player.play();
+				});
+			}
+		};
+		tick();
+		const id = setInterval(tick, 200);
+		return () => clearInterval(id);
+	});
+
+	/** Горизонтальная позиция всплывающей реакции — детерминированно по id автора. */
+	function reactLeft(id: string): number {
+		let h = 0;
+		for (const ch of id) h = (h * 31 + ch.charCodeAt(0)) % 1000;
+		return 15 + (h % 60);
+	}
+
+	$effect(() => {
+		if (party.status === 'idle') partyPanelOpen = false;
 	});
 
 	/** Подпись текущего качества: при «Авто» показываем, что реально играет. */
@@ -901,7 +1106,7 @@
 			<div class="mt-3 flex gap-2">
 				<button
 					type="button"
-					onclick={() => void goto(nextHref)}
+					onclick={() => goWithParty(nextHref)}
 					class="h-9 flex-1 rounded-full bg-accent text-[13px] font-semibold text-accent-ink
 					       transition hover:bg-accent-hover"
 				>
@@ -953,6 +1158,17 @@
 					</p>
 				{/if}
 			</div>
+
+			{#if inParty()}
+				<span
+					class="hidden shrink-0 items-center gap-1.5 rounded-full border border-emerald-400/40
+					       bg-black/40 px-2.5 py-1 text-[11px] text-emerald-300 backdrop-blur-md sm:flex"
+					title="Смотрят вместе: {party.peers.map((p) => p.name).join(', ')}"
+				>
+					<Icon name="users" size={12} />
+					{party.peers.length}
+				</span>
+			{/if}
 
 			{#if qualityLabel}
 				<span
@@ -1067,10 +1283,16 @@
 			{@render seekButton(-10)}
 			{@render seekButton(10)}
 
-			{#if nextHref}
-				<a href={nextHref} class="pctl" aria-label="Следующая серия" title="Следующая серия">
+			{#if nextHref && !partyLocked}
+				<button
+					type="button"
+					onclick={() => goWithParty(nextHref)}
+					class="pctl"
+					aria-label="Следующая серия"
+					title="Следующая серия"
+				>
 					<Icon name="next" size={18} />
-				</a>
+				</button>
 			{/if}
 
 			<!-- Громкость: ползунок раскрывается по наведению, чтобы не занимать место -->
@@ -1110,6 +1332,39 @@
 				{#if player.playbackRate !== 1}
 					<span class="tnum text-[11px] text-accent">{player.playbackRate}×</span>
 				{/if}
+
+				<!-- ===================== совместный просмотр ===================== -->
+				<div class="relative">
+					<button
+						type="button"
+						onclick={() => {
+							if (inParty()) partyPanelOpen = !partyPanelOpen;
+							else partySetupOpen = !partySetupOpen;
+						}}
+						class="pctl relative {(inParty() && partyPanelOpen) || (!inParty() && partySetupOpen)
+							? 'bg-white/15'
+							: ''}"
+						aria-label="Смотреть вместе"
+						title="Смотреть вместе"
+					>
+						<Icon name="users" size={19} />
+						{#if inParty()}
+							<span class="absolute right-1.5 top-1.5 h-1.5 w-1.5 rounded-full bg-emerald-400"></span>
+						{/if}
+						{#if party.unread > 0}
+							<span
+								class="absolute -right-1 -top-1 grid h-4 min-w-4 place-items-center rounded-full
+								       bg-accent px-1 text-[9.5px] font-bold leading-none text-accent-ink"
+							>
+								{party.unread}
+							</span>
+						{/if}
+					</button>
+
+					{#if partySetupOpen && !inParty()}
+						<PartySetup snapshot={partySnapshot} onClose={() => (partySetupOpen = false)} />
+					{/if}
+				</div>
 
 				<!-- ========================= панель настроек ======================= -->
 				<div class="relative">
@@ -1165,12 +1420,15 @@
 								<p class="psection">
 									<Icon name="magnet" size={13} />
 									Раздача · качество
+									{#if partyLocked}<span class="ml-auto text-[10px] font-normal text-white/40">Выбирает хост</span>{/if}
 								</p>
 								{#each player.torrentOptions as o (o.hash)}
 									<button
 										type="button"
+										disabled={partyLocked}
 										onclick={() => player.switchTorrent(o.hash)}
-										class="pitem {o.hash === player.source?.mediaSourceId ? 'pitem-on' : ''}"
+										class="pitem {o.hash === player.source?.mediaSourceId ? 'pitem-on' : ''}
+										       {partyLocked ? 'opacity-50' : ''}"
 									>
 										{#if o.quality}
 											<span class="tnum rounded bg-white/10 px-1 text-[10px] font-semibold uppercase leading-4">
@@ -1190,12 +1448,18 @@
 								<p class="psection">
 									<Icon name="volume" size={13} />
 									Озвучка
+									{#if partyLocked}<span class="ml-auto text-[10px] font-normal text-white/40">Выбирает хост</span>{/if}
 								</p>
 								{#each player.translations as t (t.id)}
 									<button
 										type="button"
-										onclick={() => void player.switchTranslation(t.id)}
-										class="pitem {t.id === player.activeTranslationId ? 'pitem-on' : ''}"
+										disabled={partyLocked}
+										onclick={() => {
+											if (inParty() && isHost()) sendTranslation(t.label);
+											void player.switchTranslation(t.id);
+										}}
+										class="pitem {t.id === player.activeTranslationId ? 'pitem-on' : ''}
+										       {partyLocked ? 'opacity-50' : ''}"
 									>
 										<span class="flex-1 leading-snug">{t.label}</span>
 										{#if t.id === player.activeTranslationId}<Icon name="check" size={14} />{/if}
@@ -1270,6 +1534,75 @@
 			</div>
 		</div>
 	</div>
+
+	<!-- ======================= оверлеи совместного просмотра ======================= -->
+
+	{#if partyPanelOpen && inParty()}
+		<PartyPanel onClose={() => (partyPanelOpen = false)} />
+	{/if}
+
+	<!-- Всплывающие реакции: поднимаются снизу вверх и гаснут. -->
+	{#if party.reactions.length}
+		<div class="pointer-events-none absolute inset-0 z-20 overflow-hidden">
+			{#each party.reactions as r (r.id)}
+				<div
+					class="party-float absolute bottom-36 flex flex-col items-center"
+					style="left: {reactLeft(r.id)}%"
+				>
+					<span class="text-3xl drop-shadow-lg">{r.emoji}</span>
+					<span class="mt-0.5 max-w-24 truncate text-[10px] text-white/70">{r.name}</span>
+				</div>
+			{/each}
+		</div>
+	{/if}
+
+	<!-- Тосты комнаты: снизу слева, исчезают сами. -->
+	{#if party.toasts.length}
+		<div class="pointer-events-none absolute bottom-36 left-[var(--gutter)] z-40 flex flex-col gap-2">
+			{#each party.toasts as t (t.id)}
+				<div class="rounded-full border border-white/15 bg-black/80 px-4 py-2 text-[13px] text-white backdrop-blur-md">
+					{t.text}
+				</div>
+			{/each}
+		</div>
+	{/if}
+
+	<!-- Отсчёт синхронного старта. -->
+	{#if partyCount > 0}
+		<div class="pointer-events-none absolute inset-0 z-40 grid place-items-center">
+			<div class="grid h-28 w-28 place-items-center rounded-full border-2 border-accent bg-black/70 backdrop-blur-md">
+				<span class="tnum font-display text-5xl text-white">{partyCount}</span>
+			</div>
+		</div>
+	{/if}
+
+	<!-- Переподключение после обрыва связи. -->
+	{#if party.status === 'reconnecting'}
+		<div
+			class="absolute right-[var(--gutter)] top-16 z-40 rounded-full border border-white/15
+			       bg-black/75 px-4 py-2 text-[12px] text-white/80 backdrop-blur-md"
+		>
+			Связь с комнатой потеряна — переподключаемся…
+		</div>
+	{/if}
+
+	<!-- Кик: хост исключил из комнаты. -->
+	{#if party.kicked}
+		<div class="absolute inset-0 z-50 grid place-items-center bg-black/80 p-6 backdrop-blur-sm">
+			<div class="w-80 max-w-full rounded-lg border border-white/15 bg-canvas p-6 text-center">
+				<p class="font-display text-base text-white">Хост исключил вас из комнаты</p>
+				<p class="mt-2 text-[13px] text-white/55">Прогресс сохранён — можно досмотреть одному.</p>
+				<button
+					type="button"
+					onclick={() => (party.kicked = false)}
+					class="mt-5 h-10 w-full rounded-full bg-accent text-[13px] font-semibold text-accent-ink
+					       transition hover:bg-accent-hover"
+				>
+					Продолжить одному
+				</button>
+			</div>
+		</div>
+	{/if}
 </div>
 
 <style>
@@ -1412,6 +1745,29 @@
 		100% {
 			transform: translateX(300%);
 		}
+	}
+
+	/* Реакции комнаты: всплывают и гаснут, как в стриминговых чатах. */
+	@keyframes party-float {
+		0% {
+			opacity: 0;
+			transform: translateY(12px) scale(0.7);
+		}
+		12% {
+			opacity: 1;
+			transform: translateY(0) scale(1);
+		}
+		75% {
+			opacity: 1;
+		}
+		100% {
+			opacity: 0;
+			transform: translateY(-56px) scale(1.05);
+		}
+	}
+
+	.party-float {
+		animation: party-float 1.9s ease-out forwards;
 	}
 
 	@media (prefers-reduced-motion: reduce) {

@@ -65,9 +65,17 @@ interface PlayerPrefs {
 	muted: boolean;
 	rate: number;
 	qualityHeight: number | null;
+	/** Подпись озвучки, которую пользователь выбрал последней («Торрент · LostFilm»). */
+	translationLabel: string | null;
 }
 
-const DEFAULT_PREFS: PlayerPrefs = { volume: 1, muted: false, rate: 1, qualityHeight: null };
+const DEFAULT_PREFS: PlayerPrefs = {
+	volume: 1,
+	muted: false,
+	rate: 1,
+	qualityHeight: null,
+	translationLabel: null
+};
 
 function readPrefs(): PlayerPrefs {
 	if (typeof localStorage === 'undefined') return { ...DEFAULT_PREFS };
@@ -218,8 +226,19 @@ export class PlayerController {
 				throw new Error(detail?.message ?? `Сервер ответил ${res.status}`);
 			}
 
-			const source = (await res.json()) as PlaybackSource;
+			let source = (await res.json()) as PlaybackSource;
 			if (this.destroyed) return;
+
+			// Запомненная озвучка: у торрентов каждая дорожка — готовый манифест в
+			// этом же ответе, ставим её сразу. Явный audioStreamIndex в запросе
+			// (пользователь уже выбрал) имеет приоритет.
+			if (opts.audioStreamIndex == null && this.prefs.translationLabel) {
+				const wanted = this.prefs.translationLabel;
+				const match = source.translations.find((t) => t.url && t.label === wanted);
+				if (match && match.id !== source.activeTranslationId) {
+					source = { ...source, streamUrl: match.url!, activeTranslationId: match.id };
+				}
+			}
 
 			this.source = source;
 			this.activeTranslationId = source.activeTranslationId;
@@ -315,6 +334,10 @@ export class PlayerController {
 	async switchTranslation(translationId: string): Promise<void> {
 		const next = this.translations.find((t) => t.id === translationId);
 		if (!next || !this.target || next.id === this.activeTranslationId) return;
+
+		// Запоминаем выбор: следующий тайтл стартует с этой же озвучкой.
+		this.prefs.translationLabel = next.label;
+		this.savePrefs();
 
 		const wasPlaying = !this.paused;
 

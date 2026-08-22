@@ -552,6 +552,56 @@
 		return `${backHref.split('?')[0]}/watch?s=${n.seasonNumber}&e=${n.episodeNumber}`;
 	});
 
+	/* -------------------------- автопереход к следующей ------------------------- */
+
+	/**
+	 * Отсчёт стартует в последние секунды серии. Отмена действует до конца этой
+	 * серии; перемотка назад или пауза возвращают автопереход — решение было
+	 * осознанным.
+	 */
+	const AUTOPLAY_WINDOW_SEC = 10;
+	let nextCountdown = $state<number | null>(null);
+	let nextCancelled = $state(false);
+
+	const autoNextActive = $derived(
+		nextHref != null &&
+			player.status === 'ready' &&
+			!player.paused &&
+			player.duration > 60 &&
+			player.duration - player.displayTime <= AUTOPLAY_WINDOW_SEC
+	);
+
+	// Новая серия — чистый лист для отсчёта.
+	$effect(() => {
+		targetKey;
+		nextCountdown = null;
+		nextCancelled = false;
+	});
+
+	// Вышли из окна отсчёта (пауза, перемотка назад) — отмена снимается.
+	$effect(() => {
+		if (!autoNextActive) nextCancelled = false;
+	});
+
+	$effect(() => {
+		if (!autoNextActive || nextCancelled) {
+			nextCountdown = null;
+			return;
+		}
+		const href = nextHref!;
+		const startedAt = Date.now();
+		nextCountdown = AUTOPLAY_WINDOW_SEC;
+		const id = setInterval(() => {
+			const left = Math.max(0, AUTOPLAY_WINDOW_SEC - Math.floor((Date.now() - startedAt) / 1000));
+			nextCountdown = left;
+			if (left === 0) {
+				clearInterval(id);
+				void goto(href);
+			}
+		}, 250);
+		return () => clearInterval(id);
+	});
+
 	/** Подпись текущего качества: при «Авто» показываем, что реально играет. */
 	const qualityLabel = $derived.by(() => {
 		if (!player.levels.length) return null;
@@ -822,7 +872,7 @@
 	{/if}
 
 	<!-- ====================== пропуск заставки/титров ====================== -->
-	{#if player.activeSegment && player.status === 'ready'}
+	{#if player.activeSegment && player.status === 'ready' && nextCountdown == null}
 		<button
 			type="button"
 			onclick={() => player.skipSegment()}
@@ -833,6 +883,49 @@
 			{segmentLabel}
 			<Icon name="chevronRight" size={15} />
 		</button>
+	{/if}
+
+	<!-- ====================== автопереход к следующей серии ================= -->
+	{#if nextCountdown != null && nextHref && context.nextEpisode}
+		<div
+			class="absolute bottom-32 right-[var(--gutter)] z-30 w-80 max-w-[calc(100vw-2rem)]
+			       rounded-lg border border-white/15 bg-black/80 p-4 backdrop-blur-xl"
+		>
+			<p class="text-[11px] font-semibold uppercase tracking-wider text-white/50">
+				Следующая серия через {nextCountdown} {secondsWord(nextCountdown)}
+			</p>
+			<p class="mt-1 truncate text-sm font-semibold text-white">
+				S{context.nextEpisode.seasonNumber}E{context.nextEpisode.episodeNumber}
+				{#if context.nextEpisode.name}· {context.nextEpisode.name}{/if}
+			</p>
+			<div class="mt-3 flex gap-2">
+				<button
+					type="button"
+					onclick={() => void goto(nextHref)}
+					class="h-9 flex-1 rounded-full bg-accent text-[13px] font-semibold text-accent-ink
+					       transition hover:bg-accent-hover"
+				>
+					Смотреть сейчас
+				</button>
+				<button
+					type="button"
+					onclick={() => {
+						nextCancelled = true;
+						nextCountdown = null;
+					}}
+					class="h-9 rounded-full border border-white/20 px-4 text-[13px] text-white/80
+					       transition hover:border-white/45"
+				>
+					Отмена
+				</button>
+			</div>
+			<div class="mt-3 h-1 overflow-hidden rounded-full bg-white/10">
+				<div
+					class="h-full bg-accent transition-[width] duration-1000 ease-linear"
+					style="width: {(1 - nextCountdown / AUTOPLAY_WINDOW_SEC) * 100}%"
+				></div>
+			</div>
+		</div>
 	{/if}
 
 	<!-- ============================ верхняя полоса ========================= -->

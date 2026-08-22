@@ -54,7 +54,7 @@ const episodeInTitle = (name: string, s: number, e: number): boolean =>
 
 /** Сезонные паки берём, только если раздачи с самой серией не нашлось. */
 const seasonPackRe = (s: number): RegExp =>
-	new RegExp(`(сезон\\s*0?${s}\\b|0?${s}\\s*сезон\\b|s0?${s}\\b(?!\\s*e))`, 'i');
+	new RegExp(`(сезон[:\\s]*0?${s}\\b|0?${s}\\s*сезон\\b|s0?${s}\\b(?!\\s*e))`, 'i');
 
 /* --------------------------------- Jackett -------------------------------- */
 
@@ -102,6 +102,14 @@ function rankedTorrents(results: JackettResult[], target: ScrapeTarget): Jackett
 		const seeds = r.Seeders ?? 0;
 		let score = Math.min(seeds, 50) * 2 + Math.log10(Math.max(r.Size ?? 0, 1));
 		if (seeds === 0) score -= 100;
+
+		// Русский звук важнее числа сидов: кириллица в названии — русская
+		// раздача (RU-tracker стиль). Мертвую (0 сидов) не поднимаем — она всё
+		// равно не подхватится. Явно нерусские озвучки (ITA/GER/…) опускаем,
+		// иначе сиды выносят их на первое место.
+		const cyrillic = /[а-яё]/i.test(name);
+		if (cyrillic && seeds > 0) score += 120;
+		else if (!cyrillic && /\b(ita|ger|fre|fra|spa|esp|pol)\b/i.test(name)) score -= 80;
 
 		if (target.type === 'show') {
 			const s = target.season ?? 1;

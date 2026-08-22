@@ -9,7 +9,7 @@
  */
 
 import { config, tmdb } from '$lib/server/config';
-import type { MediaType, PlaybackSource, TorrentOption, Translation } from '$lib/types';
+import type { MediaType, PlaybackSource, ScrapeTarget, TorrentOption, Translation } from '$lib/types';
 
 interface JackettResult {
 	Title?: string;
@@ -48,13 +48,13 @@ const PUBLIC_TRACKERS = [
 const VIDEO_RE = /\.(mkv|mp4|avi|m4v|mov|webm|ts)$/i;
 // Выбор конкретной серии в названии раздачи: "S01E02", "1x02", "серия 2".
 const episodeInTitle = (name: string, s: number, e: number): boolean =>
-	new RegExp(`s0?${s}\\s*e0?${e}\\b`, 'i').test(name) ||
+	new RegExp(`s0?${s}[\\s._-]*e0?${e}\\b`, 'i').test(name) ||
 	new RegExp(`\\b0?${s}x0?${e}\\b`).test(name) ||
 	new RegExp(`сер[иияя]+\\s*0?${e}\\b`, 'i').test(name);
 
 /** Сезонные паки берём, только если раздачи с самой серией не нашлось. */
 const seasonPackRe = (s: number): RegExp =>
-	new RegExp(`(сезон\\s*0?${s}\\b|s0?${s}\\b(?!\\s*e))`, 'i');
+	new RegExp(`(сезон\\s*0?${s}\\b|0?${s}\\s*сезон\\b|s0?${s}\\b(?!\\s*e))`, 'i');
 
 /* --------------------------------- Jackett -------------------------------- */
 
@@ -74,6 +74,24 @@ async function jackettSearch(query: string): Promise<JackettResult[]> {
 	return data.Results ?? [];
 }
 
+/**
+ * Номера сезонов, упомянутые в названии раздачи: «сезон: 2», «1 сезон»,
+ * «S02», «02x01». Диапазоны вроде «S01-S20» дают все числа диапазона.
+ * Пустой список — сезон не упомянут, раздача проходит.
+ */
+function seasonsInTitle(name: string): number[] {
+	const found = new Set<number>();
+	for (const re of [
+		/сезон[:\s]*0?(\d{1,2})\b/gi,
+		/\b0?(\d{1,2})\s*сезон/gi,
+		/\bs0?(\d{1,2})\b/gi,
+		/\b0?(\d{1,2})x\d{2}\b/gi
+	]) {
+		for (const m of name.matchAll(re)) found.add(Number(m[1]));
+	}
+	return [...found];
+}
+
 /** Кандидаты в порядке убывания пригодности. Пусто — играть нечего. */
 function rankedTorrents(results: JackettResult[], target: ScrapeTarget): JackettResult[] {
 	const withMagnet = results.filter((r) => r.MagnetUri);
@@ -88,6 +106,10 @@ function rankedTorrents(results: JackettResult[], target: ScrapeTarget): Jackett
 		if (target.type === 'show') {
 			const s = target.season ?? 1;
 			const e = target.episode ?? 1;
+			// Раздача явно про другой сезон («Сезон: 2» при запросе S01) —
+			// брак: иначе плеер тихо покажет чужой сезон.
+			const seasons = seasonsInTitle(name);
+			if (seasons.length && !seasons.includes(s)) score -= 500;
 			// Файл самой серии в разы меньше сезонного пака — старт быстрее.
 			if (episodeInTitle(name, s, e)) score += 40;
 			else if (seasonPackRe(s).test(name)) score += 10;
@@ -228,6 +250,9 @@ function pickVideoFile(files: TorrFile[], target: ScrapeTarget): TorrFile | null
 		const e = target.episode ?? 1;
 		const ep = videos.find((f) => episodeInTitle(f.path, target.season ?? 1, e));
 		if (ep) return ep;
+		// Пак без совпадения серии — молча подсунёт чужую серию (самый большой
+		// файл не обязан быть нужной серией). Одиночный файл берём как есть.
+		return videos.length === 1 ? videos[0] : null;
 	}
 	return videos.sort((a, b) => b.length - a.length)[0];
 }
@@ -584,7 +609,7 @@ export async function torrentPlaybackSource(
 		return null;
 	}
 
-	const pool = found.candidates.slice(0, 5);
+	const pool = found.candidates.slice(0, 8);
 	console.log(`[torrents] ${pool.length} candidates to try`);
 
 	// Кандидаты запускаем ПОСЛЕДОВАТЕЛЬНО по очереди — TorrServer (gst) может
@@ -635,13 +660,11 @@ async function tryTorrentCandidate(
 ): Promise<PlaybackSource | null> {
 	console.log(`[torrents] START adding candidate ${cand.Title?.substring(0, 40)}`);
 
-	// Голые magnet (rutracker через Jackett и Torrentio приходят без трекеров)
-	// полагаются только на DHT — из дата-центра метаданные так собираются
-	// минутами и не успевают в лимит. Работающий announce отдаёт их за секунды.
+	// Раздачи с трекеров часто несут только мёртвые announce (retracker.local —
+	// локальный трекер провайдера, из дата-центра недоступен). Докидываем живые
+	// публичные трекеры всегда: дубли безвредны, а метаданные придут быстрее.
 	let link = cand.MagnetUri!;
-	if (!/[?&]tr=/.test(link)) {
-		for (const tr of PUBLIC_TRACKERS) link += `&tr=${encodeURIComponent(tr)}`;
-	}
+	for (const tr of PUBLIC_TRACKERS) link += `&tr=${encodeURIComponent(tr)}`;
 
 	const startTime = Date.now();
 	console.log(`[torrents] Adding to TorrServer...`);
@@ -702,12 +725,13 @@ async function tryTorrentCandidate(
 	console.log(`[torrents] Added successfully, hash: ${hash.substring(0, 8)}...`);
 
 	// Метаданные читаются из пиров; бюджет ограничен лимитом функции, кандидаты
-	// идут параллельно. Если список файлов уже пришёл, но играбельного
-	// (MKV/WebM) видео в нём нет — ждать дальше бессмысленно, отказываемся сразу.
+	// идут последовательно. Живые раздачи отдают файлы за секунды; мёртвые
+	// (сиды не отвечают из дата-центра) не отдадут и за минуту — долгое
+	// ожидание одного кандидата съедает общий бюджет и не пускает остальных.
 	console.log(`[torrents] Fetching torrent files...`);
 	const filesStartTime = Date.now();
 	let file: TorrFile | null = null;
-	for (let i = 0; i < 8 && !file; i++) {
+	for (let i = 0; i < 2 && !file; i++) {
 		const filesFetchStart = Date.now();
 		const files = await torrentFiles(hash);
 		const filesFetchDuration = Date.now() - filesFetchStart;

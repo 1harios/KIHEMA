@@ -384,6 +384,14 @@ export interface TorrentOption {
 	quality: string | null;
 }
 
+/** Цель торрент-поиска: тайтл и конкретная серия для сериалов. */
+export interface ScrapeTarget {
+	type: MediaType;
+	tmdbId: number;
+	season?: number;
+	episode?: number;
+}
+
 export interface PlaybackContext {
 	title: string;
 	originalTitle?: string;

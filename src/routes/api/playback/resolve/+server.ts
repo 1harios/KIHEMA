@@ -172,7 +172,7 @@ export const POST: RequestHandler = async ({ request, cookies }) => {
 	error(404, 'Тайтл не найден в медиатеке или торрент-источнике');
 };
 
-// Увеличиваем timeout для Vercel — torrenents требуют до 60 сек на старт нового контента
+// Увеличиваем timeout для Vercel — торренты требуют до 60 сек на старт нового контента
 export const config = { 
 	maxDuration: 300, // 5 минут максимум (торренты могут долго стартовать)
 	runtime: 'nodejs'

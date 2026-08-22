@@ -150,16 +150,16 @@ export const POST: RequestHandler = async ({ request, cookies }) => {
 			
 			const searchPromise = (async () => {
 				// Проверка что config загружен корректно
-				if (!config || !config.torrents) {
+				if (!siteConfig || !siteConfig.torrents) {
 					throw new Error('TorrServer config not loaded - check TORRSERVER_URL env var');
 				}
 				
-				if (!config.torrents.serverUrl) {
+				if (!siteConfig.torrents.serverUrl) {
 					throw new Error('TORRSERVER_URL environment variable not set on Vercel');
 				}
 				
 				console.log(`[playback] torrenents: start search ${body.season ? `S${body.season}E${body.episode}` : 'movie'}`);
-				console.log(`[playback] TorrServer URL: ${config.torrents.serverUrl}`);
+				console.log(`[playback] TorrServer URL: ${siteConfig.torrents.serverUrl}`);
 				
 				// Запускаем поиск с подробным логированием каждого шага
 				const result = await Promise.race([

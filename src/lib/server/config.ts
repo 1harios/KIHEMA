@@ -64,7 +64,7 @@ export const config = {
 	 */
 	torrents: {
 		enabled: env.TORRSERVER_ENABLED !== 'false', // по умолчанию true на Vercel
-		serverUrl: envOr(env.TORRSERVER_URL, 'https://integer-mysql-helicopter-brother.trycloudflare.com').replace(/\/+$/, ''),
+		serverUrl: envOr(env.TORRSERVER_URL, 'https://alpine-consultants-hair-dryer.trycloudflare.com').replace(/\/+$/, ''),
 		jackettUrl: envOr(env.JACKETT_URL, 'https://jac.red').replace(/\/+$/, ''),
 		jackettApiKey: (env.JACKETT_API_KEY ?? '').trim(),
 		torrentioUrl: envOr(env.TORRENTIO_URL, 'https://torrentio.strem.fun').replace(/\/+$/, ''),

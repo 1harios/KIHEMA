@@ -161,8 +161,9 @@ export const POST: RequestHandler = async ({ request, cookies }) => {
 	if (scraped.source) return json(await withIntroSegments(scraped.source));
 
 	/* ------------------------------- торренты -------------------------------- */
-	// Запасной путь: тайтла нет в играбельных CDN — пробуем TorrServer на VPS.
-	// Включён по умолчанию (TORRSERVER_ENABLED !== 'false'), сервер cloudflared tunnel к VPS.
+	// Torrenents включены по умолчанию, но если CDN скраперы не ответили за ~2 сек,
+	// пробуем torrenents параллельно — это быстрее, чем ждать полного отказа CDN.
+	const cdnPromise = scraped.reason === 'upstream' ? tryScrape(body.type, body.tmdbId, body.season, body.episode) : Promise.resolve(scraped as ScrapeResult);
 	if (siteConfig.torrents.enabled && !excluded.has('torrent')) {
 		try {
 			console.log('[playback] пробую торрент-источник для', body.type, body.tmdbId);

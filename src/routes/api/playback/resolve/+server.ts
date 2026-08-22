@@ -161,10 +161,11 @@ export const POST: RequestHandler = async ({ request, cookies }) => {
 	if (scraped.source) return json(await withIntroSegments(scraped.source));
 
 	/* ------------------------------- торренты -------------------------------- */
-	// Запасной путь: тайтла нет в играбельных CDN — пробуем локальный TorrServer.
-	// Включается только TORRSERVER_ENABLED=true; сбой не маскирует «нет в CDN».
+	// Запасной путь: тайтла нет в играбельных CDN — пробуем TorrServer на VPS.
+	// Включён по умолчанию (TORRSERVER_ENABLED !== 'false'), сервер cloudflared tunnel к VPS.
 	if (siteConfig.torrents.enabled && !excluded.has('torrent')) {
 		try {
+			console.log('[playback] пробую торрент-источник для', body.type, body.tmdbId);
 			const torrent = await torrentPlaybackSource({
 				type: body.type,
 				tmdbId: body.tmdbId,
@@ -180,6 +181,8 @@ export const POST: RequestHandler = async ({ request, cookies }) => {
 				e instanceof Error ? e.message : e
 			);
 		}
+	} else {
+		console.warn('[playback] торренты', siteConfig.torrents.enabled ? 'выключены по config' : 'исключены');
 	}
 
 	/* ----------------------------- понятные ошибки --------------------------- */

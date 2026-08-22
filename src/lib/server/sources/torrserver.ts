@@ -587,18 +587,25 @@ export async function torrentPlaybackSource(
 	const pool = found.candidates.slice(0, 5);
 	console.log(`[torrents] ${pool.length} candidates to try`);
 
-	// Кандидаты запускаем параллельно: пока один собирает метаданные и пиров,
-	// другие уже греются. Кто первым дал играбельный манифест — тот и поток.
-	// Последовательный перебор здесь не годится: каждая раздача может ждать
-	// метаданные десятки секунд, а у функции жёсткий лимит времени.
-	const attempts = pool.map((cand) =>
-		tryTorrentCandidate(cand, target, found.briefTitle).catch(() => null)
-	);
-	const source = await firstNonNull(attempts);
-	if (!source) {
-		console.warn(`[torrents] ни одна из ${Math.min(pool.length, 5)} раздач не дала играбельный поток`);
+	// Кандидаты запускаем ПОСЛЕДОВАТЕЛЬНО по очереди — TorrServer (gst) может
+	// обрабатывать только ONE torrent одновременно. Параллельные запросы приводят
+	// к таймаутам и сбоям. Делаем паузу 3 сек между попытками.
+	for (const cand of pool) {
+		console.log(`[torrents] Trying candidate #${pool.indexOf(cand) + 1}/${pool.length}: ${cand.Title?.substring(0, 50)}...`);
+		const source = await tryTorrentCandidate(cand, target, found.briefTitle);
+		if (source) {
+			console.log(`[torrents] SUCCESS with candidate #${pool.indexOf(cand) + 1}`);
+			return source;
+		}
+		console.log(`[torrents] Candidate #${pool.indexOf(cand) + 1} failed, retrying in 3s...`);
+		
+		// Пауза между попытками чтобы TorrServer успел обработать предыдущую
+		await new Promise(r => setTimeout(r, 3_000));
 	}
-	return source;
+
+	console.warn(`[torrents] Все ${pool.length} попытки не дали поток`);
+	return null;
+}
 }
 
 /** Первый не-null результат; null, если все закончились без результата. */

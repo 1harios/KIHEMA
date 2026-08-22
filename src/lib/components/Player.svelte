@@ -1616,9 +1616,9 @@
 		</div>
 	{/if}
 
-	<!-- Чат свернут: новые сообщения ненадолго всплывают сбоку. -->
+	<!-- Чат свернут: новые сообщения ненадолго всплывают справа внизу. -->
 	{#if chatPopups.length}
-		<div class="pointer-events-none absolute bottom-36 left-[var(--gutter)] z-40 flex flex-col gap-2">
+		<div class="pointer-events-none absolute bottom-36 right-[var(--gutter)] z-40 flex flex-col items-end gap-2">
 			{#each chatPopups as cp (cp.id)}
 				<div
 					class="party-popup max-w-72 rounded-lg border border-white/15 bg-black/80 px-3 py-2

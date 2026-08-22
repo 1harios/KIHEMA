@@ -614,6 +614,14 @@ export async function listTorrentOptions(target: ScrapeTarget): Promise<TorrOpti
 	for (const r of found?.candidates ?? []) {
 		const hash = resultHash(r);
 		if (!hash) continue;
+		// Jackett и Torrentio могут вернуть один и тот же торрент: дубликат
+		// ломал ключи {#each} в меню плеера. Оставляем раздачу с большим
+		// числом сидов, метку «local» не теряем.
+		const prev = options.find((o) => o.hash === hash);
+		if (prev) {
+			if ((r.Seeders ?? 0) > prev.seeders) prev.seeders = r.Seeders ?? 0;
+			continue;
+		}
 		options.push({
 			hash,
 			title: r.Title ?? '',

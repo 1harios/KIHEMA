@@ -501,6 +501,11 @@ export class PlayerController {
 
 				hls.on(HlsCtor.Events.ERROR, (_e, data) => {
 					if (!data.fatal) return;
+					console.warn(
+						`[player] hls.js fatal: ${data.type}/${data.details}`,
+						data.response?.code ?? '',
+						data.response?.text?.slice?.(0, 100) ?? ''
+					);
 					// Внутренние повторы hls.js уже исчерпаны. startLoad() здесь создавал
 					// бесконечный цикл при 403/CORS вместо понятной ошибки пользователю.
 					if (data.type === HlsCtor.ErrorTypes.NETWORK_ERROR) {

@@ -99,8 +99,8 @@ export const config = {
 	 * разрешения проходит мимо, ничего не ломая.
 	 */
 	torrents: {
-		enabled: env.TORRSERVER_ENABLED === 'true',
-		serverUrl: envOr(env.TORRSERVER_URL, 'http://127.0.0.1:8090').replace(/\/+$/, ''),
+		enabled: env.TORRSERVER_ENABLED !== 'false', // по умолчанию true на Vercel
+		serverUrl: envOr(env.TORRSERVER_URL, 'https://idaho-spectrum-stats-crystal.trycloudflare.com').replace(/\/+$/, ''),
 		jackettUrl: envOr(env.JACKETT_URL, 'https://jac.red').replace(/\/+$/, ''),
 		jackettApiKey: (env.JACKETT_API_KEY ?? '').trim(),
 		/**

@@ -204,5 +204,9 @@ export const POST: RequestHandler = async ({ request, cookies }) => {
 	error(404, 'Тайтла нет в медиатеке, и CDN-источники его не нашли');
 };
 
-/** Скрейпинг чужих CDN и холодный старт торрент-раздачи бывают медленными. */
-export const config = { maxDuration: 60 };
+// Vercel default timeout 10s, но torrenents требуют до 60 сек — используем serverless runtime
+export const config = { 
+	maxDuration: 60,
+	runtime: 'nodejs' // Не edge, так как нужны обычные fetch
+	// maxDuration работает через Vercel timeout, но функция завершается раньше из-за сети
+};

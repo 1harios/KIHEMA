@@ -283,7 +283,7 @@ async function probeAudioTracks(hash: string, fileId: number): Promise<ProbeTrac
  */
 async function prewarmManifest(
 	url: () => string,
-	budgetMs = 12_000
+	budgetMs = 90_000 // Увеличено с 12s до 90s для холодного старта TorrServer
 ): Promise<{ ok: true } | { ok: false; reason: string }> {
 	const startedAt = Date.now();
 	for (;;) {
@@ -701,22 +701,43 @@ async function buildSource(
 	const urlFor = (audio: number) =>
 		`${config.torrents.serverUrl}/gst/${hash}/master.m3u8?index=${file.id}&audio=${audio}`;
 
+	console.log(`[torrents] warming up torrent ${hash.substring(0, 8)}...`);
+
 	// Прогрев: первый запрос манифеста поднимает транскодер и предзагрузку.
 	// Холодный gst отвечает 502/504, пока транскодер не поднимется (десятки
 	// секунд), а у ошибки нет CORS-заголовков — браузер видит глухой
 	// net::ERR_FAILED. Поэтому ждём настоящий 200 до конца бюджета и отдаём
 	// браузеру только заведомо живой манифест.
-	const warmed = await prewarmManifest(() => urlFor(0));
+	// Увеличиваем timeout до 60 сек на прогрев.
+	const warmed = await Promise.race([
+		prewarmManifest(() => urlFor(0)),
+		new Promise<{ ok: false; reason: string }>((_, reject) =>
+			setTimeout(() => reject(new Error('[torrents] manifest warmup timeout')), 60_000)
+		)
+	]);
+
 	if (!warmed.ok) {
 		console.warn(`[torrents] ${hash}: gst не отдал манифест (${warmed.reason})`);
 		return null;
 	}
 
+	console.log(`[torrents] ${hash}: manifest ready, probing audio tracks...`);
+
 	// Каждая аудиодорожка MKV — отдельная «озвучка»: у gst свой поток на
 	// дорожку через audio=N. Манифест к этому моменту прогрет, но discoverer
 	// всё равно может не успеть — тогда остаёмся с дорожкой по умолчанию.
-	const audios = await probeAudioTracks(hash, file.id);
+	const audios = await Promise.race([
+		probeAudioTracks(hash, file.id),
+		new Promise<any[]>(() =>
+			setTimeout(() => {
+				console.warn(`[torrents] ${hash}: audio tracks timeout, using default track`);
+				return [];
+			}, 10_000)
+		)
+	]);
+
 	const trackCount = audios?.length ?? 1;
+	console.log(`[torrents] ${hash}: found ${trackCount} audio track(s)`);
 
 	const translations: Translation[] = Array.from({ length: trackCount }, (_, i) => {
 		const track = audios?.[i];

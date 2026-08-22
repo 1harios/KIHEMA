@@ -146,22 +146,27 @@ export const POST: RequestHandler = async ({ request, cookies }) => {
 	// MatriX.143 с cloudflared tunnel.
 	if (siteConfig.torrents.enabled && !excluded.has('torrent')) {
 		try {
-			console.log('[playback] пробую торрент-источник для', body.type, body.tmdbId);
-			const torrent = await torrentPlaybackSource({
-				type: body.type,
-				tmdbId: body.tmdbId,
-				season: body.season,
-				episode: body.episode
-			});
+			console.log('[playback] пробуем торрент-источник для', body.type, body.tmdbId);
+			const torrent = await Promise.race([
+				torrentPlaybackSource({
+					type: body.type,
+					tmdbId: body.tmdbId,
+					season: body.season,
+					episode: body.episode
+				}),
+				new Promise<null>((_, reject) => 
+					setTimeout(() => reject(new Error('[playback] torrenents timeout after 90s')), 90_000)
+				)
+			]);
 			if (torrent) {
-				console.log('[playback] torrenents success:', torrent.mediaSourceId);
+				console.log('[playback] торренты success:', torrent.mediaSourceId);
 				return json(await withIntroSegments({ ...torrent, provider: 'torrent' }));
 			} else {
 				console.warn('[playback] torrenents returned null for', body.tmdbId);
 			}
 		} catch (e) {
 			const errorMsg = e instanceof Error ? e.message : String(e);
-			console.error('[playback] torrenents error:', errorMsg);
+			console.error('[playback] torrenents error or timeout:', errorMsg);
 		}
 	} else {
 		console.warn('[playback] торренты', siteConfig.torrents.enabled ? 'выключены по config' : 'исключены');

@@ -8,7 +8,7 @@
  *   4. браузер играет master.m3u8 напрямую — CORS у TorrServer открыт.
  */
 
-import { config, tmdb } from '$lib/server/config';
+import { config, getTorrentServerUrl, tmdb } from '$lib/server/config';
 import type { MediaType, PlaybackSource, ScrapeTarget, TorrentOption, Translation } from '$lib/types';
 
 interface JackettResult {
@@ -294,8 +294,9 @@ const LANG_NAMES: Record<string, string> = {
  */
 async function probeAudioTracks(hash: string, fileId: number): Promise<ProbeTrack[] | null> {
 	try {
+		const base = await getTorrentServerUrl();
 		const res = await fetch(
-			`${config.torrents.serverUrl}/gst/${hash}/probe?index=${fileId}`,
+			`${base}/gst/${hash}/probe?index=${fileId}`,
 			{ signal: AbortSignal.timeout(8_000) }
 		);
 		if (!res.ok) return null;
@@ -353,7 +354,8 @@ async function findLocalEntry(
 	target: ScrapeTarget
 ): Promise<{ hash: string; title: string; data?: string } | null> {
 	try {
-		const res = await fetch(`${config.torrents.serverUrl}/torrents`, {
+		const base = await getTorrentServerUrl();
+		const res = await fetch(`${base}/torrents`, {
 			method: 'POST',
 			headers: { 'content-type': 'application/json' },
 			body: JSON.stringify({ action: 'list' }),
@@ -391,7 +393,8 @@ async function localLibrarySource(target: ScrapeTarget): Promise<PlaybackSource 
 /** Раздача уже в базе TorrServer (смотрели раньше) — источник без трекеров. */
 async function sourceByHash(hash: string, target: ScrapeTarget): Promise<PlaybackSource | null> {
 	try {
-		const res = await fetch(`${config.torrents.serverUrl}/torrents`, {
+		const base = await getTorrentServerUrl();
+		const res = await fetch(`${base}/torrents`, {
 			method: 'POST',
 			headers: { 'content-type': 'application/json' },
 			body: JSON.stringify({ action: 'list' }),
@@ -412,7 +415,8 @@ async function sourceByHash(hash: string, target: ScrapeTarget): Promise<Playbac
 /** Общий запрос списка раздач из базы TorrServer. */
 async function fetchTorrentList(): Promise<TorrListEntry[]> {
 	try {
-		const res = await fetch(`${config.torrents.serverUrl}/torrents`, {
+		const base = await getTorrentServerUrl();
+		const res = await fetch(`${base}/torrents`, {
 			method: 'POST',
 			headers: { 'content-type': 'application/json' },
 			body: JSON.stringify({ action: 'list' }),
@@ -435,7 +439,8 @@ async function addCandidate(cand: JackettResult, fallbackTitle: string): Promise
 		link += PUBLIC_TRACKERS.map((t) => `&tr=${encodeURIComponent(t)}`).join('');
 	}
 	try {
-		const res = await fetch(`${config.torrents.serverUrl}/torrents`, {
+		const base = await getTorrentServerUrl();
+		const res = await fetch(`${base}/torrents`, {
 			method: 'POST',
 			headers: { 'content-type': 'application/json', 'user-agent': UA },
 			body: JSON.stringify({
@@ -476,11 +481,12 @@ async function tryPreparedCandidate(
 
 /** Убирает заведённые на время поиска раздачи, не трогая те, что были в базе. */
 async function removeTorrents(hashes: string[], existing: Set<string>): Promise<void> {
+	const base = await getTorrentServerUrl();
 	await Promise.all(
 		[...new Set(hashes)]
 			.filter((h) => h && !existing.has(h))
 			.map((h) =>
-				fetch(`${config.torrents.serverUrl}/torrents`, {
+				fetch(`${base}/torrents`, {
 					method: 'POST',
 					headers: { 'content-type': 'application/json' },
 					body: JSON.stringify({ action: 'rem', hash: h }),
@@ -488,6 +494,31 @@ async function removeTorrents(hashes: string[], existing: Set<string>): Promise<
 				}).catch(() => {})
 			)
 	);
+}
+
+/**
+ * Помечает раздачу, которая успешно заиграла, маркером локальной библиотеки.
+ * Повторный просмотр этого тайтла пойдёт через localLibrarySource — мгновенно,
+ * без обращения к трекерам.
+ */
+async function markLocalLibrary(hash: string, target: ScrapeTarget, title: string): Promise<void> {
+	if (title.startsWith(localMark(target))) return;
+	try {
+		const base = await getTorrentServerUrl();
+		const res = await fetch(`${base}/torrents`, {
+			method: 'POST',
+			headers: { 'content-type': 'application/json' },
+			body: JSON.stringify({
+				action: 'set',
+				hash,
+				title: `${localMark(target)}${title}`.slice(0, 200)
+			}),
+			signal: AbortSignal.timeout(5_000)
+		});
+		if (res.ok) console.log(`[torrents] ${hash.substring(0, 8)} помечена в локальную библиотеку`);
+	} catch {
+		/* некритично: просто следующий просмотр будет чуть дольше */
+	}
 }
 
 /* ------------------------- список раздач для выбора ------------------------ */
@@ -729,7 +760,7 @@ export async function torrentPlaybackSource(
 		return null;
 	}
 
-	const ready: { hash: string; file: TorrFile }[] = [];
+	const ready: { hash: string; file: TorrFile; title: string }[] = [];
 	const failed: string[] = [];
 	const deadline = Date.now() + 12_000;
 	for (;;) {
@@ -746,7 +777,7 @@ export async function torrentPlaybackSource(
 			const file = pickVideoFile(files, target);
 			if (file) {
 				pending.delete(hash);
-				ready.push({ hash, file });
+				ready.push({ hash, file, title: entry.title ?? '' });
 				console.log(`[torrents] метаданные готовы: ${hash.substring(0, 8)}`);
 			} else if (files.length) {
 				// Метаданные пришли, но играбельного файла для серии нет — брак,
@@ -766,9 +797,10 @@ export async function torrentPlaybackSource(
 		`[torrents] метаданные: ${ready.length} готово, ${pending.size} не дождались, ${failed.length} мертвы`
 	);
 
-	for (const { hash, file } of ready) {
+	for (const { hash, file, title } of ready) {
 		const source = await buildSource(hash, file, target);
 		if (source) {
+			await markLocalLibrary(hash, target, title || hash.substring(0, 8));
 			const ours = [...failed, ...pending, ...ready.map((r) => r.hash)].filter(
 				(h) => h !== hash
 			);
@@ -793,8 +825,9 @@ async function buildSource(
 			? `${target.season ?? 1}x${target.episode ?? 1}`
 			: 'movie';
 
+	const base = await getTorrentServerUrl();
 	const urlFor = (audio: number) =>
-		`${config.torrents.serverUrl}/gst/${hash}/master.m3u8?index=${file.id}&audio=${audio}`;
+		`${base}/gst/${hash}/master.m3u8?index=${file.id}&audio=${audio}`;
 
 	console.log(`[torrents] warming up torrent ${hash.substring(0, 8)}...`);
 

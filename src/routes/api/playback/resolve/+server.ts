@@ -1,6 +1,6 @@
 import { error, json, type RequestHandler } from '@sveltejs/kit';
 import { archivePlaybackSource, findArchiveFilm } from '$lib/server/archive';
-import { config as siteConfig, jellyfinAnon, libraryIndex } from '$lib/server/config';
+import { config as siteConfig, getTorrentServerUrl, jellyfinAnon, libraryIndex } from '$lib/server/config';
 import { DEMO_SEGMENTS, DEMO_STREAMS, DEMO_TRANSLATIONS } from '$lib/server/demo-data';
 import { getIntroDbSegments, mergeMediaSegments } from '$lib/server/introdb';
 import { readSession } from '$lib/server/session';
@@ -154,12 +154,8 @@ export const POST: RequestHandler = async ({ request, cookies }) => {
 					throw new Error('TorrServer config not loaded - check TORRSERVER_URL env var');
 				}
 				
-				if (!siteConfig.torrents.serverUrl) {
-					throw new Error('TORRSERVER_URL environment variable not set on Vercel');
-				}
-				
 				console.log(`[playback] torrenents: start search ${body.season ? `S${body.season}E${body.episode}` : 'movie'}`);
-				console.log(`[playback] TorrServer URL: ${siteConfig.torrents.serverUrl}`);
+				console.log(`[playback] TorrServer URL: ${await getTorrentServerUrl()}`);
 				
 				// Запускаем поиск с подробным логированием каждого шага
 				const result = await Promise.race([

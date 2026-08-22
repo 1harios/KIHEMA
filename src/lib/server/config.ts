@@ -64,7 +64,13 @@ export const config = {
 	 */
 	torrents: {
 		enabled: env.TORRSERVER_ENABLED !== 'false', // по умолчанию true на Vercel
-		serverUrl: envOr(env.TORRSERVER_URL, 'https://alpine-consultants-hair-dryer.trycloudflare.com').replace(/\/+$/, ''),
+		serverUrl: envOr(env.TORRSERVER_URL, 'https://bone-motherboard-nutrition-inbox.trycloudflare.com').replace(/\/+$/, ''),
+		/**
+		 * Discovery-точка на VPS: файл с актуальным URL quick-туннеля. URL меняется
+		 * при каждой перезагрузке VPS, поэтому адрес берём отсюда, а serverUrl
+		 * остаётся запасным.
+		 */
+		discoveryUrl: (env.TORRSERVER_DISCOVERY_URL ?? '').trim() || 'http://213.165.34.107:8091/tunnel.txt',
 		jackettUrl: envOr(env.JACKETT_URL, 'https://jac.red').replace(/\/+$/, ''),
 		jackettApiKey: (env.JACKETT_API_KEY ?? '').trim(),
 		torrentioUrl: envOr(env.TORRENTIO_URL, 'https://torrentio.strem.fun').replace(/\/+$/, ''),
@@ -73,6 +79,36 @@ export const config = {
 } as const;
 
 export const isJellyfinConfigured = (): boolean => Boolean(config.jellyfin.baseUrl);
+
+/* ------------------------- адрес TorrServer (live) ------------------------ */
+
+const TUNNEL_TTL_MS = 5 * 60_000;
+let tunnelCache: { at: number; url: string } | null = null;
+
+/**
+ * Актуальный базовый адрес TorrServer. Quick-туннель trycloudflare меняет URL
+ * при каждой перезагрузке VPS; свежий URL VPS публикует в discovery-файле.
+ * Кеш на 5 минут, при сбое discovery — запасной TORRSERVER_URL.
+ */
+export async function getTorrentServerUrl(): Promise<string> {
+	if (tunnelCache && tunnelCache.at + TUNNEL_TTL_MS > Date.now()) return tunnelCache.url;
+	try {
+		const res = await fetch(config.torrents.discoveryUrl, {
+			signal: AbortSignal.timeout(3_000),
+			cache: 'no-store'
+		});
+		if (res.ok) {
+			const url = (await res.text()).trim().replace(/\/+$/, '');
+			if (/^https?:\/\/[a-z0-9.-]+/.test(url)) {
+				tunnelCache = { at: Date.now(), url };
+				return url;
+			}
+		}
+	} catch {
+		/* discovery недоступен — работаем с запасным адресом */
+	}
+	return config.torrents.serverUrl;
+}
 
 /* ------------------------------- синглтоны -------------------------------- */
 

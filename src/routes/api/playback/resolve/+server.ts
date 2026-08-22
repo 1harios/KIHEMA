@@ -175,5 +175,5 @@ export const POST: RequestHandler = async ({ request, cookies }) => {
 // Увеличиваем timeout для Vercel — торренты требуют до 60 сек на старт нового контента
 export const config = { 
 	maxDuration: 300, // 5 минут максимум (торренты могут долго стартовать)
-	runtime: 'nodejs'
+	runtime: 'nodejs20.x'
 };

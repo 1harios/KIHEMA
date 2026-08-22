@@ -698,10 +698,13 @@
 		const st = party.roomState;
 		const by = party.stateBy;
 		if (!st || !by || by === party.selfId || party.status !== 'in-room') return;
-		if (player.status !== 'ready') return;
+		// Пауза безопасна в любом состоянии источника — применяем сразу, иначе
+		// событие потеряется, пока гость переподключает поток.
 		if (st.paused && !player.paused) {
 			applyRemote(true, st.positionSec, () => void videoEl?.pause());
-		} else if (!st.paused && player.paused) {
+		}
+		if (player.status !== 'ready') return;
+		if (!st.paused && player.paused) {
 			applyRemote(false, st.positionSec, () => void player.play());
 		}
 		const shared = sharedPosition();
@@ -717,6 +720,7 @@
 		if (!st) return;
 		const shared = untrack(() => sharedPosition());
 		if (st.paused && !player.paused) applyRemote(true, shared, () => void videoEl?.pause());
+		else if (!st.paused && player.paused) applyRemote(false, shared, () => void player.play());
 		if (Math.abs(shared - player.currentTime) > 1.5) {
 			applyRemote(st.paused, shared, () => player.seek(shared));
 		}
@@ -740,13 +744,28 @@
 
 	// Озвучку выбирает хост — повторяем за ним (зависим и от списка дорожек:
 	// источник может догрузиться позже самого события).
+	let dubWarnLabel = '';
 	$effect(() => {
 		const by = party.translationBy;
 		const label = party.roomState?.translationLabel;
 		if (!by || by === party.selfId || !label || party.status === 'idle') return;
-		const match = player.translations.find((t) => t.label === label);
-		if (match && match.id !== player.activeTranslationId) {
-			void player.switchTranslation(match.id);
+		if (!player.translations.length) return;
+		// У хоста и гостя раздачи могут отличаться — сравниваем нестрого.
+		const norm = (s: string) => s.toLowerCase().replace(/\s+/g, ' ').trim();
+		const want = norm(label);
+		const match =
+			player.translations.find((t) => t.label === label) ??
+			player.translations.find((t) => {
+				const l = norm(t.label);
+				return l.includes(want) || want.includes(l);
+			});
+		if (match) {
+			if (match.id !== player.activeTranslationId) void player.switchTranslation(match.id);
+			return;
+		}
+		if (dubWarnLabel !== label) {
+			dubWarnLabel = label;
+			pushToast('Не удалось переключить озвучку: её нет в вашем источнике');
 		}
 	});
 

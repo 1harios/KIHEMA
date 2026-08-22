@@ -627,7 +627,7 @@ async function tryTorrentCandidate(
 	target: ScrapeTarget,
 	fallbackTitle: string
 ): Promise<PlaybackSource | null> {
-	console.warn(`[torrents] пробуем раздачу «${cand.Title}» (сиды: ${cand.Seeders ?? 0})`);
+	console.log(`[torrents] START adding candidate ${cand.Title?.substring(0, 40)}`);
 
 	// Голые magnet (rutracker через Jackett и Torrentio приходят без трекеров)
 	// полагаются только на DHT — из дата-центра метаданные так собираются
@@ -636,6 +636,9 @@ async function tryTorrentCandidate(
 	if (!/[?&]tr=/.test(link)) {
 		for (const tr of PUBLIC_TRACKERS) link += `&tr=${encodeURIComponent(tr)}`;
 	}
+
+	const startTime = Date.now();
+	console.log(`[torrents] Adding to TorrServer...`);
 
 	// save_to_db: true — иначе раздача не переживает stat/list и стрим не поднять.
 	const addRes = await fetch(`${config.torrents.serverUrl}/torrents`, {
@@ -647,34 +650,55 @@ async function tryTorrentCandidate(
 			title: cand.Title ?? fallbackTitle,
 			save_to_db: true
 		}),
-		signal: AbortSignal.timeout(15_000)
+		signal: AbortSignal.timeout(30_000) // Увеличено до 30 сек на добавление
 	});
+
+	const addDuration = Date.now() - startTime;
+	console.log(`[torrents] TorrServer add took ${addDuration}ms, status: ${addRes.status}`);
+
 	if (!addRes.ok) {
-		console.warn(`[torrents] TorrServer не принял раздачу: ${addRes.status}`);
+		const errorText = await addRes.text().catch(() => 'no error text');
+		console.error(`[torrents] TorrServer add failed (${addRes.status}): ${errorText.substring(0, 100)}`);
 		return null;
 	}
+
 	const added = (await addRes.json()) as { hash?: string };
 	const hash = (added.hash ?? '').toLowerCase();
 	if (!hash) {
-		console.warn('[torrents] TorrServer не вернул hash раздачи');
+		console.warn('[torrents] TorrServer did not return hash for this torrent');
 		return null;
 	}
+
+	console.log(`[torrents] Added successfully, hash: ${hash.substring(0, 8)}...`);
 
 	// Метаданные читаются из пиров; бюджет ограничен лимитом функции, кандидаты
 	// идут параллельно. Если список файлов уже пришёл, но играбельного
 	// (MKV/WebM) видео в нём нет — ждать дальше бессмысленно, отказываемся сразу.
+	console.log(`[torrents] Fetching torrent files...`);
+	const filesStartTime = Date.now();
 	let file: TorrFile | null = null;
 	for (let i = 0; i < 8 && !file; i++) {
+		const filesFetchStart = Date.now();
 		const files = await torrentFiles(hash);
+		const filesFetchDuration = Date.now() - filesFetchStart;
+		
+		console.log(`[torrents] Files fetch ${i+1}: ${files.length} files in ${filesFetchDuration}ms`);
+		
 		if (files.length) {
 			file = pickVideoFile(files, target);
-			if (!file) break;
+			if (!file) {
+				console.warn(`[torrents] No video file found in ${files.length} files, retrying...`);
+				await new Promise(r => setTimeout(r, 2_500));
+			}
 		} else {
-			await new Promise((r) => setTimeout(r, 1_250));
+			await new Promise(r => setTimeout(r, 2_500));
 		}
 	}
+	const totalFilesFetchDuration = Date.now() - filesStartTime;
+	console.log(`[torrents] Total files fetch took ${totalFilesFetchDuration}ms`);
+	
 	if (!file) {
-		console.warn(`[torrents] ${hash}: играбельного видеофайла (MKV/WebM) в раздаче нет`);
+		console.warn(`[torrents] ${hash}: no playable video file found after ${totalFilesFetchDuration}ms`);
 		// Раздача без играбельного файла бесполезна — убираем, чтобы не засорять базу.
 		await fetch(`${config.torrents.serverUrl}/torrents`, {
 			method: 'POST',

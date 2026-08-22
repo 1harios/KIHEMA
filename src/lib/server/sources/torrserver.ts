@@ -544,7 +544,16 @@ export async function torrentPlaybackSource(
 	target: ScrapeTarget,
 	opts: { hash?: string } = {}
 ): Promise<PlaybackSource | null> {
-	if (!config.torrents.enabled || !tmdb) return null;
+	if (!config.torrents.enabled) {
+		console.log('[torrents] disabled by config');
+		return null;
+	}
+	if (!tmdb) {
+		console.warn('[torrents] TMDB not configured — cannot search torrents');
+		return null;
+	}
+
+	console.log(`[torrents] searching for ${target.type} ${target.tmdbId}...`);
 
 	// Раздача, явно выбранная в плеере. Обычно она уже в базе TorrServer
 	// (тайтл смотрели) — тогда источник собирается мгновенно, без трекеров.
@@ -570,15 +579,19 @@ export async function torrentPlaybackSource(
 		searchCandidates(target)
 	]);
 	if (local) return local;
-	if (!found || !found.candidates.length) return null;
+	if (!found || !found.candidates.length) {
+		console.warn(`[torrents] no candidates found for tmdb ${target.tmdbId}`);
+		return null;
+	}
 
-	const pool = found.candidates;
+	const pool = found.candidates.slice(0, 5);
+	console.log(`[torrents] ${pool.length} candidates to try`);
 
 	// Кандидаты запускаем параллельно: пока один собирает метаданные и пиров,
 	// другие уже греются. Кто первым дал играбельный манифест — тот и поток.
 	// Последовательный перебор здесь не годится: каждая раздача может ждать
 	// метаданные десятки секунд, а у функции жёсткий лимит времени.
-	const attempts = pool.slice(0, 5).map((cand) =>
+	const attempts = pool.map((cand) =>
 		tryTorrentCandidate(cand, target, found.briefTitle).catch(() => null)
 	);
 	const source = await firstNonNull(attempts);

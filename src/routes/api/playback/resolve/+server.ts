@@ -154,13 +154,14 @@ export const POST: RequestHandler = async ({ request, cookies }) => {
 				episode: body.episode
 			});
 			if (torrent) {
+				console.log('[playback] torrenents success:', torrent.mediaSourceId);
 				return json(await withIntroSegments({ ...torrent, provider: 'torrent' }));
+			} else {
+				console.warn('[playback] torrenents returned null for', body.tmdbId);
 			}
 		} catch (e) {
-			console.error(
-				'[playback] торрент-источник не сработал:',
-				e instanceof Error ? e.message : e
-			);
+			const errorMsg = e instanceof Error ? e.message : String(e);
+			console.error('[playback] torrenents error:', errorMsg);
 		}
 	} else {
 		console.warn('[playback] торренты', siteConfig.torrents.enabled ? 'выключены по config' : 'исключены');

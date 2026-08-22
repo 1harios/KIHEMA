@@ -471,7 +471,7 @@ export async function getEpisodes(tmdbId: number, season: number): Promise<Episo
 				)
 			: undefined;
 		// Серии вне медиатеки играются через CDN-скраперы, если они включены.
-		return { ...e, inLibrary: !!entry || scrapersEnabled(), jellyfinId: entry?.jellyfinId };
+		return { ...e, inLibrary: !!entry || torrentsEnabled(), jellyfinId: entry?.jellyfinId };
 	});
 }
 

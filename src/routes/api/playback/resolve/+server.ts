@@ -180,7 +180,18 @@ export const POST: RequestHandler = async ({ request, cookies }) => {
 			}
 		} catch (e) {
 			const errorMsg = e instanceof Error ? e.message : String(e);
-			console.error('[playback] torrenents error or timeout:', errorMsg);
+			const isFetchError = /fetch/i.test(errorMsg);
+			
+			if (isFetchError) {
+				console.error('[playback] TorrServer недоступен по URL:', config.torrents.serverUrl);
+				console.error('[playback] Ошибка подключения:', errorMsg);
+				console.error('[playback] Проверьте:');
+				console.error('1. TorrServer запущен?');
+				console.error('2. Cloudflared tunnel доступен из интернета?');
+				console.error('3. Firewall блокирует HTTPS?');
+			} else {
+				console.error('[playback] torrenents error or timeout:', errorMsg);
+			}
 		}
 	} else {
 		console.warn('[playback] торренты', siteConfig.torrents.enabled ? 'выключены по config' : 'исключены');

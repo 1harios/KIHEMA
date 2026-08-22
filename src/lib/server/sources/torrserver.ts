@@ -657,6 +657,23 @@ async function tryTorrentCandidate(
 			save_to_db: true
 		}),
 		signal: AbortSignal.timeout(30_000) // Увеличено до 30 сек на добавление
+	}).catch(e => {
+		const isNetworkError = /fetch|network|timeout/i.test(e.message);
+		
+		if (isNetworkError) {
+			console.error(`[torrents] NETWORK ERROR connecting to TorrServer:`);
+			console.error('  Server URL:', config.torrents.serverUrl);
+			console.error('  Error type:', e.constructor.name);
+			console.error('  Error message:', e.message);
+			console.error('');
+			console.error('  Possible causes:');
+			console.error('    • Cloudflared tunnel not accessible from Vercel cloud');
+			console.error('    • TorrServer (gst) not running');
+			console.error('    • Firewall blocking HTTPS traffic');
+			console.error('    • Cloudflare anti-bot blocking bot user-agents');
+		}
+		
+		throw new Error(`TorrServer unreachable: ${e.message}`);
 	});
 
 	const addDuration = Date.now() - startTime;

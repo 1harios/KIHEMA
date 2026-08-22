@@ -21,7 +21,7 @@ import { config, libraryIndex, tmdb } from './config';
 import * as demo from './demo-data';
 import { COUNTRIES, NETWORKS, SHOW_STATUS, SORT_OPTIONS, SORT_OPTIONS_TV } from './tmdb';
 import { archiveCount, archiveHighlights, markArchive } from './archive';
-import { scrapersEnabled } from './sources/lightstream';
+import { torrentsEnabled } from './sources/torrserver';
 
 export { NETWORKS, SORT_OPTIONS, SORT_OPTIONS_TV, SHOW_STATUS, COUNTRIES };
 
@@ -40,8 +40,8 @@ function withPresence<T extends CatalogItem>(items: T[]): T[] {
 	// Своя медиатека приоритетнее: архив добивает только то, чего в ней нет.
 	const withArchive = markArchive(marked) as T[];
 
-	// CDN-скраперы закрывают весь каталог — без них без Jellyfin смотреть нечего.
-	if (scrapersEnabled()) {
+	// Торренты закрывают весь каталог — основной источник контента через TorrServer.
+	if (torrentsEnabled()) {
 		return withArchive.map((item) => (item.inLibrary ? item : { ...item, inLibrary: true }));
 	}
 	return withArchive;

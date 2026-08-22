@@ -4,7 +4,6 @@ import { config as siteConfig, jellyfinAnon, libraryIndex } from '$lib/server/co
 import { DEMO_SEGMENTS, DEMO_STREAMS, DEMO_TRANSLATIONS } from '$lib/server/demo-data';
 import { getIntroDbSegments, mergeMediaSegments } from '$lib/server/introdb';
 import { readSession } from '$lib/server/session';
-import { scrapePlaybackSource, type ScrapeResult } from '$lib/server/sources/lightstream';
 import { torrentPlaybackSource } from '$lib/server/sources/torrserver';
 import type { MediaType, PlaybackProvider, PlaybackSource } from '$lib/types';
 
@@ -12,27 +11,15 @@ import type { MediaType, PlaybackProvider, PlaybackSource } from '$lib/types';
  * Разрешает тайтл в готовый к воспроизведению источник.
  *
  * Порядок источников: демо → архив (открытый контент) → собственная медиатека
- * Jellyfin (если тайтл в индексе и пользователь вошёл) → CDN-скраперы
- * (Cobalt/Titan/Carbon, без логина) → локальный TorrServer (торренты, только
- * при TORRSERVER_ENABLED=true). Скраперы стоят перед торрентами: готовый
- * CDN-поток стартует мгновенно, а раздаче нужно время на сиды и метаданные.
+ * Jellyfin (если тайтл в индексе и пользователь вошёл) → локальный TorrServer
+ * (торренты, при TORRSERVER_ENABLED=true). Торрент-источник основной — все
+ * потоки транслируются через cloudflared tunnel от TorrServer MatriX.143.
  *
  * О токене: медиа-URL (HLS-сегменты, субтитры, тайлы) уходят в браузер с api_key
  * в query — заголовок туда не поставить. Это тот же подход, что в штатном
  * jellyfin-web. Токен пользовательский и скоупится его правами.
  */
 
-/** Скрейпим параллельно с Jellyfin-путём, когда оба могут дать результат. */
-async function tryScrape(
-	type: MediaType,
-	tmdbId: number,
-	season?: number,
-	episode?: number
-): Promise<ScrapeResult> {
-	if (!siteConfig.scrapers.enabled) return { source: null, reason: 'upstream' };
-	const result = await scrapePlaybackSource({ type, tmdbId, season, episode });
-	return result.source ? { ...result, source: { ...result.source, provider: 'scrapers' } } : result;
-}
 
 export const POST: RequestHandler = async ({ request, cookies }) => {
 	const body = (await request.json()) as {
@@ -125,9 +112,9 @@ export const POST: RequestHandler = async ({ request, cookies }) => {
 			});
 			return json(await withIntroSegments({ ...source, provider: 'jellyfin' }));
 		} catch (e) {
-			// Jellyfin моргнул — ниже попробуем CDN, это лучше, чем обломиться.
+			// Jellyfin моргнул — пробуем торрент.
 			console.error(
-				'[playback] Jellyfin не отдал поток, пробуем CDN:',
+				'[playback] Jellyfin не отдал поток, пробуем торрент:',
 				e instanceof Error ? e.message : e
 			);
 		}
@@ -135,7 +122,7 @@ export const POST: RequestHandler = async ({ request, cookies }) => {
 
 	/* ------------------------- явный выбор раздачи --------------------------- */
 	// Пользователь выбрал конкретную раздачу в плеере (смена качества/озвучки):
-	// CDN и Jellyfin пропускаем — запрос явно про торрент.
+	// Jellyfin пропускаем — запрос явно про торрент.
 	if (body.torrent && siteConfig.torrents.enabled && !excluded.has('torrent')) {
 		try {
 			const torrent = await torrentPlaybackSource(
@@ -154,16 +141,9 @@ export const POST: RequestHandler = async ({ request, cookies }) => {
 		error(404, 'Выбранная раздача не запустилась — попробуйте другую');
 	}
 
-	/* ------------------------------ CDN-скраперы ----------------------------- */
-	const scraped = excluded.has('scrapers')
-		? ({ source: null, reason: 'not_found' } as ScrapeResult)
-		: await tryScrape(body.type, body.tmdbId, body.season, body.episode);
-	if (scraped.source) return json(await withIntroSegments(scraped.source));
-
 	/* ------------------------------- торренты -------------------------------- */
-	// Torrenents включены по умолчанию, но если CDN скраперы не ответили за ~2 сек,
-	// пробуем torrenents параллельно — это быстрее, чем ждать полного отказа CDN.
-	const cdnPromise = scraped.reason === 'upstream' ? tryScrape(body.type, body.tmdbId, body.season, body.episode) : Promise.resolve(scraped as ScrapeResult);
+	// Torrenents основной источник — торренты транслируются через TorrServer
+	// MatriX.143 с cloudflared tunnel.
 	if (siteConfig.torrents.enabled && !excluded.has('torrent')) {
 		try {
 			console.log('[playback] пробую торрент-источник для', body.type, body.tmdbId);
@@ -189,20 +169,7 @@ export const POST: RequestHandler = async ({ request, cookies }) => {
 	/* ----------------------------- понятные ошибки --------------------------- */
 	if (itemId && !session && jellyfinAnon) error(401, 'Нужно войти');
 	if (itemId && !jellyfinAnon) error(503, 'Jellyfin не настроен');
-	// Временный сбой CDN не должен маскироваться под «тайтла нет». Иначе
-	// PlayerController получает 404, считает отказ окончательным и не запускает
-	// свой автоматический повтор. Это особенно проявлялось там, где Jellyfin
-	// настроен, но запрошенного тайтла в личной библиотеке нет.
-	if (scraped.reason === 'upstream') {
-		error(502, 'CDN-источники временно не ответили, попробуйте ещё раз');
-	}
-	if (scraped.reason === 'not_found') {
-		error(
-			404,
-			'Этого тайтла нет в CDN-источниках, играбельных прямо в браузере. Такие закрытые источники, как Titan, не разрешают прямое воспроизведение. Попробуйте другой тайтл или другую серию.'
-		);
-	}
-	error(404, 'Тайтла нет в медиатеке, и CDN-источники его не нашли');
+	error(404, 'Тайтл не найден в медиатеке или торрент-источнике');
 };
 
 // Увеличиваем timeout для Vercel — torrenents требуют до 60 сек на старт нового контента

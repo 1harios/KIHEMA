@@ -1,21 +1,15 @@
 /**
- * Торрент-источник: Jackett + Torrentio (поиск раздач) и локальный TorrServer
- * (стриминг).
+ * Торрент-источник: Jackett + Torrentio (поиск раздач) и TorrServer MatriX.143 (стриминг).
  *
- * Запасной путь для тайтлов, которых нет в играбельных CDN. Цепочка:
+ * Основной источник воспроизведения. Цепочка:
  *   1. Jackett ищет по названию из TMDB, Torrentio (Stremio-аддон) — по IMDb ID;
  *   2. лучшая раздача (сиды + размер) добавляется в TorrServer;
- *   3. gst-сборка TorrServer транскодирует файл в H.264/AAC HLS;
+ *   3. gst-сборка TorrServer транскодирует файл в H.264/AAC HLS через cloudflared tunnel;
  *   4. браузер играет master.m3u8 напрямую — CORS у TorrServer открыт.
- *
- * Локальный по природе: браузер ходит на 127.0.0.1, поэтому источник имеет
- * смысл только при dev-сервере на той же машине. На Vercel он выключен и
- * цепочку не задерживает.
  */
 
 import { config, tmdb } from '$lib/server/config';
 import type { MediaType, PlaybackSource, TorrentOption, Translation } from '$lib/types';
-import type { ScrapeTarget } from './lightstream';
 
 interface JackettResult {
 	Title?: string;
@@ -740,3 +734,7 @@ async function buildSource(
 		segments: []
 	};
 }
+
+/** Включены ли торренты — от этого зависит «играбельность» каталога. */
+export const torrentsEnabled = (): boolean => config.torrents.enabled;
+

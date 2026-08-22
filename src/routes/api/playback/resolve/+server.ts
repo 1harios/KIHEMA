@@ -147,22 +147,36 @@ export const POST: RequestHandler = async ({ request, cookies }) => {
 	if (siteConfig.torrents.enabled && !excluded.has('torrent')) {
 		try {
 			console.log('[playback] пробуем торрент-источник для', body.type, body.tmdbId);
-			const torrent = await Promise.race([
-				torrentPlaybackSource({
-					type: body.type,
-					tmdbId: body.tmdbId,
-					season: body.season,
-					episode: body.episode
-				}),
-				new Promise<null>((_, reject) => 
-					setTimeout(() => reject(new Error('[playback] torrenents timeout after 90s')), 90_000)
-				)
-			]);
+			
+			const searchPromise = (async () => {
+				console.log(`[playback] torrenents: start search ${body.season ? `S${body.season}E${body.episode}` : 'movie'}`);
+				
+				// Запускаем поиск с подробным логированием каждого шага
+				const result = await Promise.race([
+					torrentPlaybackSource({
+						type: body.type,
+						tmdbId: body.tmdbId,
+						season: body.season,
+						episode: body.episode
+					}).then(source => {
+						if (!source) {
+							console.warn(`[playback] torrenents: no source found for tmdb ${body.tmdbId}`);
+						} else {
+							console.log(`[playback] torrenents: SUCCESS - ${source.streamUrl.substring(0, 50)}...`);
+						}
+						return source;
+					}),
+					new Promise<null>((_, reject) => 
+						setTimeout(() => reject(new Error('[playback] torrenents timeout after 120s')), 120_000)
+					)
+				]);
+				
+				return result;
+			})();
+			
+			const torrent = await searchPromise;
 			if (torrent) {
-				console.log('[playback] торренты success:', torrent.mediaSourceId);
 				return json(await withIntroSegments({ ...torrent, provider: 'torrent' }));
-			} else {
-				console.warn('[playback] torrenents returned null for', body.tmdbId);
 			}
 		} catch (e) {
 			const errorMsg = e instanceof Error ? e.message : String(e);

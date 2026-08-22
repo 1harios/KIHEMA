@@ -149,7 +149,17 @@ export const POST: RequestHandler = async ({ request, cookies }) => {
 			console.log('[playback] пробуем торрент-источник для', body.type, body.tmdbId);
 			
 			const searchPromise = (async () => {
+				// Проверка что config загружен корректно
+				if (!config || !config.torrents) {
+					throw new Error('TorrServer config not loaded - check TORRSERVER_URL env var');
+				}
+				
+				if (!config.torrents.serverUrl) {
+					throw new Error('TORRSERVER_URL environment variable not set on Vercel');
+				}
+				
 				console.log(`[playback] torrenents: start search ${body.season ? `S${body.season}E${body.episode}` : 'movie'}`);
+				console.log(`[playback] TorrServer URL: ${config.torrents.serverUrl}`);
 				
 				// Запускаем поиск с подробным логированием каждого шага
 				const result = await Promise.race([
@@ -180,17 +190,22 @@ export const POST: RequestHandler = async ({ request, cookies }) => {
 			}
 		} catch (e) {
 			const errorMsg = e instanceof Error ? e.message : String(e);
-			const isFetchError = /fetch/i.test(errorMsg);
+			console.error('[playback] torrenents error or timeout:', errorMsg);
 			
-			if (isFetchError) {
-				console.error('[playback] TorrServer недоступен по URL:', config.torrents.serverUrl);
-				console.error('[playback] Ошибка подключения:', errorMsg);
-				console.error('[playback] Проверьте:');
-				console.error('1. TorrServer запущен?');
-				console.error('2. Cloudflared tunnel доступен из интернета?');
-				console.error('3. Firewall блокирует HTTPS?');
-			} else {
-				console.error('[playback] torrenents error or timeout:', errorMsg);
+			if (/environment|env var|not set/i.test(errorMsg)) {
+				console.error('');
+				console.error('IMPORTANT: TorrServer URL is NOT configured on Vercel!');
+				console.error('');
+				console.error('To fix this error:');
+				console.error('1. Go to Vercel Dashboard → KIHEMA → Settings → Environment Variables');
+				console.error('2. Add new variable:');
+				console.error('   NAME: TORRSERVER_URL');
+				console.error('   VALUE: https://your-vps-domain.com OR http://vps-ip:8080');
+				console.error('3. Redeploy the application');
+				console.error('');
+				console.error('If you want to use local/dev mode, set:');
+				console.error('   TORRSERVER_URL=http://127.0.0.1:8080');
+				console.error('');
 			}
 		}
 	} else {

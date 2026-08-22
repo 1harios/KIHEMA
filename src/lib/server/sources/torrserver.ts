@@ -606,7 +606,6 @@ export async function torrentPlaybackSource(
 	console.warn(`[torrents] Все ${pool.length} попытки не дали поток`);
 	return null;
 }
-}
 
 /** Первый не-null результат; null, если все закончились без результата. */
 async function firstNonNull<T>(promises: Promise<T | null>[]): Promise<T | null> {

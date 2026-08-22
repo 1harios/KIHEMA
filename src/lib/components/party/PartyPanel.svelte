@@ -1,19 +1,25 @@
 <script lang="ts">
 	/**
-	 * Боковая панель комнаты: участники, реакции, «старт вместе» у хоста и чат.
-	 * Пока панель открыта, счётчик непрочитанных не растёт.
+	 * Боковая панель комнаты: стоит рядом с видео и не перекрывает его.
+	 * Участники, реакции, «старт вместе» (когда в комнате хотя бы двое),
+	 * смена фильма хостом и чат. Пока панель открыта, счётчик непрочитанных не растёт.
 	 */
 
+	import { goto } from '$app/navigation';
 	import {
 		party,
 		isHost,
 		leave as leaveRoom,
 		markChatRead,
 		sendChat,
+		sendGoto,
 		sendReact,
 		kick,
-		startCountdown
+		startCountdown,
+		withPartyParams
 	} from '$lib/party.svelte';
+	import { toMediaSlug } from '$lib/slug';
+	import type { CatalogItem } from '$lib/types';
 	import Icon from '../ui/Icon.svelte';
 
 	interface Props {
@@ -63,11 +69,60 @@
 	function formatTime(ts: number): string {
 		return new Date(ts).toLocaleTimeString('ru-RU', { hour: '2-digit', minute: '2-digit' });
 	}
+
+	/* ------------------------- смена фильма (хост) ------------------------- */
+
+	let pickerOpen = $state(false);
+	let query = $state('');
+	let results = $state<CatalogItem[]>([]);
+	let searching = $state(false);
+
+	// Живой поиск с дебаунсом; устаревшие запросы отменяем.
+	$effect(() => {
+		const q = query.trim();
+		if (q.length < 2) {
+			results = [];
+			searching = false;
+			return;
+		}
+		searching = true;
+		const ctrl = new AbortController();
+		const t = setTimeout(async () => {
+			try {
+				const res = await fetch(`/api/search?q=${encodeURIComponent(q)}&compact=1`, {
+					signal: ctrl.signal
+				});
+				if (res.ok) {
+					results = (await res.json()).titles as CatalogItem[];
+					searching = false;
+				}
+			} catch {
+				if (!ctrl.signal.aborted) searching = false;
+			}
+		}, 300);
+		return () => {
+			clearTimeout(t);
+			ctrl.abort();
+		};
+	});
+
+	function watchHref(item: CatalogItem): string {
+		return `/${item.type}/${toMediaSlug(item)}/watch`;
+	}
+
+	function pick(item: CatalogItem) {
+		const href = watchHref(item);
+		sendGoto(href);
+		pickerOpen = false;
+		query = '';
+		onClose();
+		void goto(withPartyParams(href));
+	}
 </script>
 
 <div
-	class="absolute bottom-24 right-0 top-0 z-30 flex w-80 max-w-[85vw] flex-col border-l
-	       border-white/12 bg-canvas/97 backdrop-blur-xl"
+	class="party-panel-in flex h-full w-80 max-w-[50vw] shrink-0 flex-col border-l border-white/12
+	       bg-canvas/97 backdrop-blur-xl"
 >
 	<!-- Заголовок: код комнаты, приглашение, выход -->
 	<div class="flex items-center gap-2 border-b border-white/10 px-3 py-2.5">
@@ -154,7 +209,8 @@
 				{emoji}
 			</button>
 		{/each}
-		{#if isHost()}
+		<!-- Кнопка имеет смысл, только когда в комнате хотя бы двое. -->
+		{#if isHost() && party.peers.length >= 2}
 			<button
 				type="button"
 				onclick={() => startCountdown()}
@@ -167,13 +223,62 @@
 		{/if}
 	</div>
 
+	<!-- Смена фильма (только хост) -->
+	{#if isHost()}
+		<div class="border-b border-white/10 px-3 py-2">
+			<button
+				type="button"
+				onclick={() => (pickerOpen = !pickerOpen)}
+				class="flex w-full items-center gap-2 text-[12px] font-semibold text-white/70
+				       transition hover:text-white"
+				aria-expanded={pickerOpen}
+			>
+				<Icon name="film" size={14} />
+				Сменить фильм
+				<Icon name="chevronDown" size={13} class="ml-auto transition {pickerOpen ? 'rotate-180' : ''}" />
+			</button>
+			{#if pickerOpen}
+				<input
+					bind:value={query}
+					placeholder="Название фильма или сериала…"
+					aria-label="Поиск фильма для комнаты"
+					class="mt-2 h-9 w-full rounded-full border border-white/15 bg-black/30 px-3.5
+					       text-[13px] text-white outline-none transition placeholder:text-white/30
+					       focus:border-accent"
+				/>
+				<div class="mt-1.5 max-h-52 space-y-0.5 overflow-y-auto">
+					{#if searching && !results.length}
+						<p class="py-2 text-center text-[12px] text-white/30">Ищем…</p>
+					{:else if query.trim().length >= 2 && !results.length}
+						<p class="py-2 text-center text-[12px] text-white/30">Ничего не нашлось</p>
+					{/if}
+					{#each results as item (item.type + item.tmdbId)}
+						<button
+							type="button"
+							onclick={() => pick(item)}
+							class="party-msg-in flex w-full items-center gap-2 rounded-md px-2 py-1.5
+							       text-left transition hover:bg-white/10"
+							title="Переключить комнату на этот тайтл"
+						>
+							<span class="flex-1 truncate text-[13px] text-white/85">{item.title}</span>
+							{#if item.year}<span class="tnum text-[11px] text-white/40">{item.year}</span>{/if}
+							<span class="rounded bg-white/10 px-1 text-[10px] text-white/50">
+								{item.type === 'movie' ? 'фильм' : 'сериал'}
+							</span>
+						</button>
+					{/each}
+				</div>
+			{/if}
+		</div>
+	{/if}
+
 	<!-- Чат -->
 	<div bind:this={feed} class="flex-1 overflow-y-auto px-3 py-2">
 		{#if !party.chatLog.length}
 			<p class="pt-4 text-center text-[12px] text-white/30">Сообщений пока нет</p>
 		{/if}
 		{#each party.chatLog as m (m.id)}
-			<div class="mb-2" class:text-right={m.self}>
+			<div class="party-msg-in mb-2" class:text-right={m.self}>
 				<p class="text-[11px] text-white/40">
 					{#if !m.self}<span class="font-semibold text-white/60">{m.name}</span> · {/if}
 					{formatTime(m.ts)}
@@ -215,3 +320,43 @@
 		</button>
 	</form>
 </div>
+
+<style>
+	/* Панель выезжает справа, сообщения мягко появляются. */
+	@keyframes party-panel-in {
+		from {
+			transform: translateX(24px);
+			opacity: 0;
+		}
+		to {
+			transform: translateX(0);
+			opacity: 1;
+		}
+	}
+
+	.party-panel-in {
+		animation: party-panel-in 0.22s var(--ease-out-quint, ease-out) both;
+	}
+
+	@keyframes party-msg-in {
+		from {
+			transform: translateY(6px);
+			opacity: 0;
+		}
+		to {
+			transform: translateY(0);
+			opacity: 1;
+		}
+	}
+
+	.party-msg-in {
+		animation: party-msg-in 0.2s ease-out both;
+	}
+
+	@media (prefers-reduced-motion: reduce) {
+		.party-panel-in,
+		.party-msg-in {
+			animation: none;
+		}
+	}
+</style>

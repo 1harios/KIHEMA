@@ -807,6 +807,39 @@
 		if (party.status === 'idle') partyPanelOpen = false;
 	});
 
+	/* Чат свёрнут — сообщения на несколько секунд всплывают поверх видео. */
+	let chatPopups = $state<{ id: string; name: string; text: string }[]>([]);
+	let chatSeen = -1;
+
+	$effect(() => {
+		const log = party.chatLog;
+		const len = log.length;
+		if (party.status === 'idle') {
+			chatSeen = -1;
+			chatPopups = [];
+			return;
+		}
+		if (chatSeen === -1) {
+			// Первое срабатывание в комнате: историю не показываем.
+			chatSeen = len;
+			return;
+		}
+		if (len <= chatSeen) {
+			chatSeen = len;
+			return;
+		}
+		const fresh = log.slice(chatSeen);
+		chatSeen = len;
+		if (partyPanelOpen) return;
+		for (const m of fresh) {
+			if (m.self) continue;
+			chatPopups = [...chatPopups, { id: m.id, name: m.name, text: m.text }];
+			setTimeout(() => {
+				chatPopups = chatPopups.filter((p) => p.id !== m.id);
+			}, 4500);
+		}
+	});
+
 	/** Подпись текущего качества: при «Авто» показываем, что реально играет. */
 	const qualityLabel = $derived.by(() => {
 		if (!player.levels.length) return null;
@@ -913,9 +946,10 @@
 
 
 <!-- svelte-ignore a11y_no_static_element_interactions -->
+<div class="flex h-dvh w-full overflow-hidden bg-black">
 <div
 	bind:this={container}
-	class="relative h-dvh w-full select-none overflow-hidden bg-black"
+	class="relative h-full min-w-0 flex-1 select-none overflow-hidden bg-black"
 	onpointermove={wake}
 	onpointerleave={() => (hoverRatio = null)}
 	style="cursor: {controlsVisible ? 'default' : 'none'}"
@@ -1537,10 +1571,6 @@
 
 	<!-- ======================= оверлеи совместного просмотра ======================= -->
 
-	{#if partyPanelOpen && inParty()}
-		<PartyPanel onClose={() => (partyPanelOpen = false)} />
-	{/if}
-
 	<!-- Всплывающие реакции: поднимаются снизу вверх и гаснут. -->
 	{#if party.reactions.length}
 		<div class="pointer-events-none absolute inset-0 z-20 overflow-hidden">
@@ -1586,6 +1616,21 @@
 		</div>
 	{/if}
 
+	<!-- Чат свернут: новые сообщения ненадолго всплывают сбоку. -->
+	{#if chatPopups.length}
+		<div class="pointer-events-none absolute bottom-36 left-[var(--gutter)] z-40 flex flex-col gap-2">
+			{#each chatPopups as cp (cp.id)}
+				<div
+					class="party-popup max-w-72 rounded-lg border border-white/15 bg-black/80 px-3 py-2
+					       backdrop-blur-md"
+				>
+					<p class="text-[11px] font-semibold text-accent">{cp.name}</p>
+					<p class="mt-0.5 break-words text-[13px] leading-snug text-white/90">{cp.text}</p>
+				</div>
+			{/each}
+		</div>
+	{/if}
+
 	<!-- Кик: хост исключил из комнаты. -->
 	{#if party.kicked}
 		<div class="absolute inset-0 z-50 grid place-items-center bg-black/80 p-6 backdrop-blur-sm">
@@ -1603,6 +1648,12 @@
 			</div>
 		</div>
 	{/if}
+</div>
+
+<!-- Панель комнаты стоит рядом с видео и не перекрывает его. -->
+{#if partyPanelOpen && inParty()}
+	<PartyPanel onClose={() => (partyPanelOpen = false)} />
+{/if}
 </div>
 
 <style>
@@ -1768,6 +1819,26 @@
 
 	.party-float {
 		animation: party-float 1.9s ease-out forwards;
+	}
+
+	/* Сообщение чата поверх видео: появляется и растворяется. */
+	@keyframes party-popup {
+		0% {
+			opacity: 0;
+			transform: translateY(8px);
+		}
+		8%, 82% {
+			opacity: 1;
+			transform: translateY(0);
+		}
+		100% {
+			opacity: 0;
+			transform: translateY(-4px);
+		}
+	}
+
+	.party-popup {
+		animation: party-popup 4.5s ease-out both;
 	}
 
 	@media (prefers-reduced-motion: reduce) {

@@ -209,7 +209,7 @@ async function prewarmManifest(
 			if (res.ok) return { ok: true };
 			const definitive =
 				(res.status >= 400 && res.status < 500) ||
-				/unsupported container/i.test(text);
+				/unsupported (container|video codec)/i.test(text);
 			if (definitive) {
 				return {
 					ok: false,

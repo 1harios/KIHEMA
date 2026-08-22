@@ -205,9 +205,8 @@ export const POST: RequestHandler = async ({ request, cookies }) => {
 	error(404, 'Тайтла нет в медиатеке, и CDN-источники его не нашли');
 };
 
-// Vercel default timeout 10s, но torrenents требуют до 60 сек — используем serverless runtime
+// Увеличиваем timeout для Vercel — torrenents требуют до 60 сек на старт нового контента
 export const config = { 
-	maxDuration: 60,
-	runtime: 'nodejs' // Не edge, так как нужны обычные fetch
-	// maxDuration работает через Vercel timeout, но функция завершается раньше из-за сети
+	maxDuration: 300, // 5 минут максимум (торренты могут долго стартовать)
+	runtime: 'nodejs'
 };

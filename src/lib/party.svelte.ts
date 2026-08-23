@@ -44,6 +44,8 @@ export interface RoomState {
 	positionSec: number;
 	anchorTs: number;
 	translationLabel: string | null;
+	/** Раздача (infoHash), на которой сидит хост, — гости выравниваются на неё. */
+	torrent: string | null;
 }
 
 /** Снимок текущего воспроизведения — отправляется при создании комнаты. */
@@ -52,6 +54,7 @@ export interface RoomSnapshot {
 	positionSec: number;
 	paused: boolean;
 	translationLabel: string | null;
+	torrent: string | null;
 }
 
 const NAME_KEY = 'kinema:party:name';
@@ -92,6 +95,8 @@ let retryCount = 0;
 let retryTimer: ReturnType<typeof setTimeout> | null = null;
 let connectTimer: ReturnType<typeof setTimeout> | null = null;
 let countdownTimer: ReturnType<typeof setTimeout> | null = null;
+let heartbeatTimer: ReturnType<typeof setInterval> | null = null;
+let lastPongAt = 0;
 let intentionalClose = false;
 let connectResolve: ((code: string) => void) | null = null;
 let connectReject: ((err: Error) => void) | null = null;
@@ -174,7 +179,9 @@ function reset(): void {
 	if (retryTimer) clearTimeout(retryTimer);
 	if (connectTimer) clearTimeout(connectTimer);
 	if (countdownTimer) clearTimeout(countdownTimer);
+	if (heartbeatTimer) clearInterval(heartbeatTimer);
 	retryTimer = connectTimer = countdownTimer = null;
+	heartbeatTimer = null;
 	party.status = 'idle';
 	party.roomCode = null;
 	party.selfId = '';
@@ -250,7 +257,8 @@ async function connect(
 		targetHref: snap?.targetHref,
 		positionSec: snap?.positionSec,
 		paused: snap?.paused,
-		translationLabel: snap?.translationLabel
+		translationLabel: snap?.translationLabel,
+		torrent: snap?.torrent ?? undefined
 	});
 
 	return new Promise<string>((resolve, reject) => {
@@ -297,6 +305,8 @@ export function leave(): void {
 
 function handleClose(): void {
 	if (intentionalClose) return;
+	if (heartbeatTimer) clearInterval(heartbeatTimer);
+	heartbeatTimer = null;
 	const wasConnecting = connectReject != null;
 
 	// Не было welcome — проваливаем рукопожатие.
@@ -354,7 +364,17 @@ function handleMessage(m: Record<string, unknown>): void {
 			party.selfName = String((m.self as { name: string }).name);
 			party.hostId = String(m.hostId);
 			party.peers = m.peers as PartyPeer[];
-			party.roomState = m.state as RoomState;
+			const st = m.state as Partial<RoomState> | null;
+			party.roomState = st
+				? {
+						targetHref: st.targetHref ?? '',
+						paused: Boolean(st.paused),
+						positionSec: Number(st.positionSec ?? 0),
+						anchorTs: Number(st.anchorTs ?? Date.now()),
+						translationLabel: st.translationLabel ?? null,
+						torrent: st.torrent ?? null
+					}
+				: null;
 			// При входе применяем состояние комнаты (позицию выровняет плеер).
 			party.stateBy = 'server';
 			party.translationBy = 'server';
@@ -364,6 +384,7 @@ function handleMessage(m: Record<string, unknown>): void {
 			clockOffset = Number(m.serverTs) - Date.now();
 			setRoomParam(party.roomCode);
 			startClockSync();
+			startHeartbeat();
 			const resolve = connectResolve;
 			connectResolve = connectReject = null;
 			resolve?.(party.roomCode ?? '');
@@ -408,28 +429,38 @@ function handleMessage(m: Record<string, unknown>): void {
 				paused: rest.paused,
 				positionSec: rest.positionSec,
 				anchorTs: rest.anchorTs,
-				translationLabel: rest.translationLabel ?? null
+				translationLabel: rest.translationLabel ?? null,
+				torrent: rest.torrent ?? null
 			};
 			party.stateBy = by ?? null;
 			break;
 		}
 
 		case 'goto': {
-			const st = party.roomState;
 			party.roomState = {
 				targetHref: String(m.targetHref),
 				paused: true,
 				positionSec: 0,
 				anchorTs: Date.now() + clockOffset,
-				translationLabel: st?.translationLabel ?? null
+				// Новый тайтл — старые озвучка/раздача не должны применяться к нему.
+				translationLabel: null,
+				torrent: null
 			};
 			party.stateBy = String(m.by ?? '');
+			party.translationBy = null;
 			break;
 		}
 
 		case 'translation': {
 			const st = party.roomState;
-			if (st) party.roomState = { ...st, translationLabel: String(m.label) };
+			const tor = typeof m.torrent === 'string' && m.torrent ? m.torrent : null;
+			if (st) {
+				party.roomState = {
+					...st,
+					translationLabel: String(m.label),
+					torrent: tor ?? st.torrent
+				};
+			}
 			party.translationBy = String(m.by ?? '');
 			break;
 		}
@@ -475,6 +506,7 @@ function handleMessage(m: Record<string, unknown>): void {
 		}
 
 		case 'pong': {
+			lastPongAt = Date.now();
 			const t = Number(m.t);
 			const rtt = Date.now() - t;
 			if (rtt >= 0) pingSamples.push(Number(m.serverTs) + rtt / 2 - Date.now());
@@ -493,6 +525,32 @@ function startClockSync(): void {
 	for (let i = 0; i < 3; i++) {
 		setTimeout(() => send({ type: 'ping', t: Date.now() }), 300 + i * 400);
 	}
+}
+
+/**
+ * Клиентский heartbeat. Без него обрыв «в одну сторону» невидим: сервер свою
+ * сторону закроет по ping_timeout, но клиент ничего не шлёт и может вечно
+ * считать себя в комнате с мёртвым сокетом. Пинг раз в 10 с; 30 с без понга —
+ * сокет признаём мёртвым и уходим в обычный реконнект с новым discovery.
+ */
+function startHeartbeat(): void {
+	if (heartbeatTimer) clearInterval(heartbeatTimer);
+	lastPongAt = Date.now();
+	heartbeatTimer = setInterval(() => {
+		if (!ws || ws.readyState !== WebSocket.OPEN) return;
+		if (Date.now() - lastPongAt > 30_000) {
+			const dead = ws;
+			ws = null;
+			try {
+				dead.close();
+			} catch {
+				/* уже мёртв */
+			}
+			handleClose();
+			return;
+		}
+		send({ type: 'ping', t: Date.now() });
+	}, 10_000);
 }
 
 /* -------------------------------- отправка -------------------------------- */
@@ -520,10 +578,10 @@ export function sendGoto(targetHref: string): void {
 	send({ type: 'goto', targetHref });
 }
 
-/** Смена озвучки — право хоста. */
-export function sendTranslation(label: string): void {
+/** Смена озвучки — право хоста. torrent — раздача хоста, гости на неё переходят. */
+export function sendTranslation(label: string, torrent: string | null): void {
 	if (party.status !== 'in-room' || !isHost()) return;
-	send({ type: 'translation', label });
+	send({ type: 'translation', label, torrent: torrent ?? undefined });
 }
 
 export function sendChat(text: string): void {

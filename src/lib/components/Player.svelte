@@ -641,7 +641,8 @@
 			targetHref: page.url.pathname + q,
 			positionSec: player.currentTime,
 			paused: player.paused,
-			translationLabel: player.activeTranslation?.label ?? null
+			translationLabel: player.activeTranslation?.label ?? null,
+			torrent: player.source?.provider === 'torrent' ? player.source.mediaSourceId : null
 		};
 	}
 
@@ -694,10 +695,13 @@
 	});
 
 	// Применяем чужие пауза/пуск/перемотка. Свои сообщения не применяем.
+	// stateBy='server' приходит с welcome/реконнекта — это состояние комнаты,
+	// его обязаны применить, даже если мы сами его последним меняли.
 	$effect(() => {
 		const st = party.roomState;
 		const by = party.stateBy;
-		if (!st || !by || by === party.selfId || party.status !== 'in-room') return;
+		if (!st || !by || (by !== 'server' && by === party.selfId) || party.status !== 'in-room')
+			return;
 		// Пауза безопасна в любом состоянии источника — применяем сразу, иначе
 		// событие потеряется, пока гость переподключает поток.
 		if (st.paused && !player.paused) {
@@ -718,6 +722,14 @@
 		if (player.status !== 'ready' || !inParty()) return;
 		const st = untrack(() => party.roomState);
 		if (!st) return;
+		// Гость на другой раздаче, чем хост, — переходим (иначе озвучка и
+		// позиции будут жить своей жизнью). Озвучка-эффект это тоже делает,
+		// но там нужен label, а здесь выравниваемся и без него.
+		const myHash = player.source?.provider === 'torrent' ? player.source.mediaSourceId : null;
+		if (st.torrent && myHash !== st.torrent && !isHost()) {
+			player.switchTorrent(st.torrent);
+			return;
+		}
 		const shared = untrack(() => sharedPosition());
 		if (st.paused && !player.paused) applyRemote(true, shared, () => void videoEl?.pause());
 		else if (!st.paused && player.paused) applyRemote(false, shared, () => void player.play());
@@ -747,10 +759,22 @@
 	let dubWarnLabel = '';
 	$effect(() => {
 		const by = party.translationBy;
-		const label = party.roomState?.translationLabel;
+		const st = party.roomState;
+		const label = st?.translationLabel;
 		if (!by || by === party.selfId || !label || party.status === 'idle') return;
-		if (!player.translations.length) return;
-		// У хоста и гостя раздачи могут отличаться — сравниваем нестрого.
+		// Пока источник не готов, переключение только навредит (гонка с load).
+		// Эффект перезапустится, когда статус и дорожки изменятся.
+		if (player.status !== 'ready' || !player.translations.length) return;
+
+		// У хоста и гостя раздачи могут различаться — тогда дорожки не сойдутся
+		// никогда. Переходим на раздачу хоста; эффект перезапустится на новом списке.
+		const myHash = player.source?.provider === 'torrent' ? player.source.mediaSourceId : null;
+		if (st?.torrent && myHash !== st.torrent && !isHost()) {
+			player.switchTorrent(st.torrent);
+			return;
+		}
+
+		// Дорожки сравниваем нестрого: формат подписей у разных раздач плавает.
 		const norm = (s: string) => s.toLowerCase().replace(/\s+/g, ' ').trim();
 		const want = norm(label);
 		const match =
@@ -1508,7 +1532,11 @@
 										type="button"
 										disabled={partyLocked}
 										onclick={() => {
-											if (inParty() && isHost()) sendTranslation(t.label);
+											if (inParty() && isHost()) {
+												const hash =
+													player.source?.provider === 'torrent' ? player.source.mediaSourceId : null;
+												sendTranslation(t.label, hash);
+											}
 											void player.switchTranslation(t.id);
 										}}
 										class="pitem {t.id === player.activeTranslationId ? 'pitem-on' : ''}

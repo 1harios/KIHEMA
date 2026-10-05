@@ -64,7 +64,9 @@ try {
 	await guest.getByRole('button', { name: 'Присоединиться к просмотру' }).click();
 	await guest.waitForURL(/\/watch\?room=/);
 	await guest.locator('iframe').waitFor();
-	await guest.getByRole('button', { name: 'Загрузить видео', exact: true }).click({ timeout: 8000 }).catch(() => {});
+	await guest.getByRole('button', { name: 'Загрузить видео', exact: true }).click({ timeout: 30_000 }).catch((error) => {
+		console.log(JSON.stringify({ phase: 'guest-initialize', message: error.message.split('\n')[0] }));
+	});
 	await ready(guest);
 	await Promise.all([playing(host), playing(guest)]);
 	await host.waitForTimeout(3000);

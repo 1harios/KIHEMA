@@ -30,20 +30,22 @@
 		party,
 		inParty,
 		isHost,
-		applyRemote,
 		pushToast,
 		savedName,
 		sharedPosition,
 		withPartyParams,
 		join as partyJoin,
 		leave as partyLeave,
-		sendBuffering,
 		sendGoto,
 		sendState,
 		sendSeek,
+		sendRate,
+		reportPlayback,
+		serverNow,
 		sendTranslation
 	} from '$lib/party.svelte';
 	import type { RoomSnapshot } from '$lib/party.svelte';
+	import { watchHref, syncRate } from '$lib/party-sync';
 	import {
 		PLAYBACK_RATES,
 		PlayerController,
@@ -165,6 +167,7 @@
 	 * с нуля недосмотренный фильм — худшее, что можно сделать.
 	 */
 	function startFrom(): number | undefined {
+		if (page.url.searchParams.has('room') || inParty()) return sharedPosition();
 		const raw = page.url.searchParams.get('t');
 		if (raw !== null) {
 			const parsed = Number.parseInt(raw, 10);
@@ -651,7 +654,9 @@
 		const code = page.url.searchParams.get('room');
 		if (!code || code === joinAttempted || inParty() || party.status === 'connecting') return;
 		joinAttempted = code;
-		void partyJoin(code, savedName() || 'Гость', null).catch(() => {
+		void partyJoin(code, savedName() || 'Гость', null).catch((e) => {
+			pushToast(e instanceof Error ? e.message : 'Не удалось войти в комнату');
+			partySetupOpen = true;
 			// Комнаты нет — убираем код из адреса, чтобы не зациклиться.
 			const u = new URL(location.href);
 			u.searchParams.delete('room');
@@ -665,131 +670,110 @@
 		if (!to?.url.pathname.endsWith('/watch')) partyLeave();
 	});
 
-	// Локальные действия видео отправляем в комнату.
+	// Only user controls are commands; play/pause/seeked during HLS loading are telemetry.
+	$effect(() => {
+		player.allowAutoplay = () => !inParty() && !page.url.searchParams.has('room');
+		player.onIntent = (intent) => {
+			if (party.status !== 'in-room') return;
+			if (watchHref(page.url.pathname + page.url.search) !== party.roomState?.targetHref) return;
+			if (intent.type === 'state') {
+				// A browser permission click must not restart or pause the entire room.
+				if (player.autoplayBlocked && !party.roomState?.paused) return;
+				sendState(intent.paused, intent.positionSec);
+			} else if (intent.type === 'seek') sendSeek(intent.positionSec);
+			else sendRate(intent.rate, intent.positionSec);
+		};
+		return () => { player.onIntent = null; player.allowAutoplay = () => true; };
+	});
+
+	let lastHardSeek = 0;
+	let dubWarnLabel = '';
+	function reportRoomPlayback() {
+		const v = videoEl;
+		if (!v || party.status !== 'in-room') return;
+		const ready = player.status === 'ready' && v.readyState >= 2 && !v.seeking && !player.autoplayBlocked;
+		reportPlayback({
+			targetHref: watchHref(page.url.pathname + page.url.search) ?? '',
+			ready, buffering: !ready, positionSec: v.currentTime,
+			torrent: player.source?.provider === 'torrent' ? player.source.mediaSourceId : null,
+			translationLabel: player.activeTranslation?.label ?? null
+		});
+	}
+
+	function syncRoom() {
+		const st = party.roomState;
+		const v = videoEl;
+		if (!st || !v || party.status !== 'in-room') return;
+		if (watchHref(page.url.pathname + page.url.search) !== st.targetHref) return;
+		if (player.status !== 'ready') return;
+		const myHash = player.source?.provider === 'torrent' ? player.source.mediaSourceId : null;
+		if (!isHost() && st.torrent && myHash !== st.torrent) {
+			player.switchTorrent(st.torrent);
+			return;
+		}
+		if (!isHost() && st.translationLabel) {
+			const match = player.translations.find((t) => t.label === st.translationLabel);
+			if (match && match.id !== player.activeTranslationId) {
+				void player.switchTranslation(match.id);
+				return;
+			}
+			if (!match && dubWarnLabel !== st.translationLabel) {
+				dubWarnLabel = st.translationLabel;
+				pushToast('Озвучка ведущего недоступна в вашем источнике');
+			}
+		}
+		const hold = st.paused || st.waitingForReady || serverNow() < st.anchorTs || (st.buffering && !isHost());
+		if (hold && !v.paused) player.pause();
+		if (v.readyState < 1) return;
+		const shared = Math.min(sharedPosition(), player.duration || Infinity);
+		const drift = shared - v.currentTime;
+		if (!v.seeking && ((hold && Math.abs(drift) > 0.15) || (v.readyState >= 2 && Math.abs(drift) > 1.5 && Date.now() - lastHardSeek > 6000))) {
+			lastHardSeek = Date.now();
+			player.seek(shared, false);
+		}
+		// Small differences are corrected gradually instead of jumping every second.
+		const rate = st.rate ?? 1;
+		player.playbackRate = rate;
+		player.setSyncRate(hold || v.seeking ? rate : syncRate(rate, drift));
+		if (!hold && v.paused && !player.autoplayBlocked) void player.play();
+	}
+
+	$effect(() => {
+		party.roomState; party.status; player.status; player.source; player.activeTranslationId;
+		untrack(() => { syncRoom(); reportRoomPlayback(); });
+	});
+
+	$effect(() => {
+		if (party.status !== 'in-room') return;
+		const sync = setInterval(syncRoom, 500);
+		const report = setInterval(reportRoomPlayback, 2000);
+		const onVisible = () => { if (!document.hidden) { syncRoom(); reportRoomPlayback(); } };
+		document.addEventListener('visibilitychange', onVisible);
+		return () => {
+			clearInterval(sync); clearInterval(report);
+			document.removeEventListener('visibilitychange', onVisible);
+			player.setSyncRate(null);
+		};
+	});
+
 	$effect(() => {
 		const v = videoEl;
 		if (!v) return;
-		const onPlay = () => {
-			if (party.status === 'in-room') sendState(false, player.currentTime);
-		};
-		const onPause = () => {
-			if (party.status === 'in-room') sendState(true, player.currentTime);
-		};
-		const onSeeked = () => {
-			if (party.status === 'in-room') sendSeek(v.currentTime);
-		};
-		const onWaiting = () => sendBuffering(true);
-		const onPlaying = () => sendBuffering(false);
-		v.addEventListener('play', onPlay);
-		v.addEventListener('pause', onPause);
-		v.addEventListener('seeked', onSeeked);
-		v.addEventListener('waiting', onWaiting);
-		v.addEventListener('playing', onPlaying);
+		const onMedia = () => reportRoomPlayback();
+		for (const event of ['canplay', 'playing', 'waiting', 'seeked', 'loadedmetadata', 'pause']) v.addEventListener(event, onMedia);
 		return () => {
-			v.removeEventListener('play', onPlay);
-			v.removeEventListener('pause', onPause);
-			v.removeEventListener('seeked', onSeeked);
-			v.removeEventListener('waiting', onWaiting);
-			v.removeEventListener('playing', onPlaying);
+			for (const event of ['canplay', 'playing', 'waiting', 'seeked', 'loadedmetadata', 'pause']) v.removeEventListener(event, onMedia);
 		};
 	});
 
-	// Применяем чужие пауза/пуск/перемотка. Свои сообщения не применяем.
-	// stateBy='server' приходит с welcome/реконнекта — это состояние комнаты,
-	// его обязаны применить, даже если мы сами его последним меняли.
+	// Announce the host's actual source after it is ready, including torrent changes.
 	$effect(() => {
+		if (party.status !== 'in-room' || !isHost() || player.status !== 'ready') return;
+		const label = player.activeTranslation?.label;
+		const hash = player.source?.provider === 'torrent' ? player.source.mediaSourceId : null;
 		const st = party.roomState;
-		const by = party.stateBy;
-		if (!st || !by || (by !== 'server' && by === party.selfId) || party.status !== 'in-room')
-			return;
-		// Пауза безопасна в любом состоянии источника — применяем сразу, иначе
-		// событие потеряется, пока гость переподключает поток.
-		if (st.paused && !player.paused) {
-			applyRemote(true, st.positionSec, () => void videoEl?.pause());
-		}
-		if (player.status !== 'ready') return;
-		if (!st.paused && player.paused) {
-			applyRemote(false, st.positionSec, () => void player.play());
-		}
-		const shared = sharedPosition();
-		if (Math.abs(shared - player.currentTime) > 1.5) {
-			applyRemote(st.paused, shared, () => player.seek(shared));
-		}
-	});
-
-	// Источник догрузился (или вошли в комнату на готовом) — выравниваемся.
-	$effect(() => {
-		if (player.status !== 'ready' || !inParty()) return;
-		const st = untrack(() => party.roomState);
-		if (!st) return;
-		// Гость на другой раздаче, чем хост, — переходим (иначе озвучка и
-		// позиции будут жить своей жизнью). Озвучка-эффект это тоже делает,
-		// но там нужен label, а здесь выравниваемся и без него.
-		const myHash = player.source?.provider === 'torrent' ? player.source.mediaSourceId : null;
-		if (st.torrent && myHash !== st.torrent && !isHost()) {
-			player.switchTorrent(st.torrent);
-			return;
-		}
-		const shared = untrack(() => sharedPosition());
-		if (st.paused && !player.paused) applyRemote(true, shared, () => void videoEl?.pause());
-		else if (!st.paused && player.paused) applyRemote(false, shared, () => void player.play());
-		if (Math.abs(shared - player.currentTime) > 1.5) {
-			applyRemote(st.paused, shared, () => player.seek(shared));
-		}
-	});
-
-	// Отстающий (плохой интернет) догоняет комнату, остальные его не ждут.
-	$effect(() => {
-		if (party.status !== 'in-room') return;
-		const id = setInterval(() => {
-			if (player.status !== 'ready' || player.paused) return;
-			const st = party.roomState;
-			if (!st || st.paused) return;
-			const shared = sharedPosition();
-			if (Math.abs(shared - player.currentTime) > 3) {
-				applyRemote(false, shared, () => player.seek(shared));
-				pushToast('Синхронизация: догоняем комнату');
-			}
-		}, 1000);
-		return () => clearInterval(id);
-	});
-
-	// Озвучку выбирает хост — повторяем за ним (зависим и от списка дорожек:
-	// источник может догрузиться позже самого события).
-	let dubWarnLabel = '';
-	$effect(() => {
-		const by = party.translationBy;
-		const st = party.roomState;
-		const label = st?.translationLabel;
-		if (!by || by === party.selfId || !label || party.status === 'idle') return;
-		// Пока источник не готов, переключение только навредит (гонка с load).
-		// Эффект перезапустится, когда статус и дорожки изменятся.
-		if (player.status !== 'ready' || !player.translations.length) return;
-
-		// У хоста и гостя раздачи могут различаться — тогда дорожки не сойдутся
-		// никогда. Переходим на раздачу хоста; эффект перезапустится на новом списке.
-		const myHash = player.source?.provider === 'torrent' ? player.source.mediaSourceId : null;
-		if (st?.torrent && myHash !== st.torrent && !isHost()) {
-			player.switchTorrent(st.torrent);
-			return;
-		}
-
-		// Дорожки сравниваем нестрого: формат подписей у разных раздач плавает.
-		const norm = (s: string) => s.toLowerCase().replace(/\s+/g, ' ').trim();
-		const want = norm(label);
-		const match =
-			player.translations.find((t) => t.label === label) ??
-			player.translations.find((t) => {
-				const l = norm(t.label);
-				return l.includes(want) || want.includes(l);
-			});
-		if (match) {
-			if (match.id !== player.activeTranslationId) void player.switchTranslation(match.id);
-			return;
-		}
-		if (dubWarnLabel !== label) {
-			dubWarnLabel = label;
-			pushToast('Не удалось переключить озвучку: её нет в вашем источнике');
+		if (label && st && watchHref(page.url.pathname + page.url.search) === st.targetHref && (label !== st.translationLabel || hash !== st.torrent)) {
+			untrack(() => sendTranslation(label, hash));
 		}
 	});
 
@@ -798,12 +782,9 @@
 		const st = party.roomState;
 		const by = party.stateBy;
 		if (!st || !by || by === party.selfId || party.status === 'idle' || !st.targetHref) return;
-		const targetUrl = new URL(st.targetHref, page.url.origin);
-		const params = new URLSearchParams(page.url.searchParams);
-		params.delete('room');
-		const here = page.url.pathname + (params.size ? `?${params}` : '');
-		const there = targetUrl.pathname + (targetUrl.searchParams.size ? `?${targetUrl.searchParams}` : '');
-		if (here !== there) void goto(withPartyParams(st.targetHref));
+		const there = watchHref(st.targetHref);
+		const here = watchHref(page.url.pathname + page.url.search);
+		if (there && here !== there) void goto(withPartyParams(there));
 	});
 
 	/** Переход, синхронный для комнаты: хост объявляет его всем. */
@@ -821,18 +802,10 @@
 			partyCount = 0;
 			return;
 		}
-		let fired = false;
 		const tick = () => {
 			const leftMs = until - Date.now();
 			partyCount = Math.max(0, Math.ceil(leftMs / 1000));
-			if (leftMs <= 0 && !fired) {
-				fired = true;
-				const shared = sharedPosition();
-				applyRemote(false, shared, () => {
-					player.seek(shared);
-					void player.play();
-				});
-			}
+			if (leftMs <= 0) syncRoom();
 		};
 		tick();
 		const id = setInterval(tick, 200);
@@ -1139,7 +1112,15 @@
 	{/if}
 
 	<!-- ===================== центральная кнопка на паузе =================== -->
-	{#if player.status === 'ready' && player.paused}
+	{#if player.status === 'ready' && player.autoplayBlocked && inParty()}
+		<button
+			type="button"
+			onclick={() => { void player.play().then(() => { syncRoom(); reportRoomPlayback(); }); }}
+			class="absolute left-1/2 top-1/2 z-30 flex -translate-x-1/2 -translate-y-1/2 items-center gap-3 rounded-2xl border border-white/20 bg-black/85 px-5 py-4 text-sm text-white shadow-4"
+		>
+			<Icon name="play" size={22} /> Нажмите, чтобы смотреть вместе
+		</button>
+	{:else if player.status === 'ready' && player.paused && !party.roomState?.waitingForReady && !partyCount}
 		<button
 			type="button"
 			onclick={() => player.togglePlay()}

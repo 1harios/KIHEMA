@@ -50,6 +50,11 @@ export interface QualityLevel {
 
 export const PLAYBACK_RATES = [0.5, 0.75, 1, 1.25, 1.5, 1.75, 2] as const;
 
+export type PlaybackIntent =
+	| { type: 'state'; paused: boolean; positionSec: number }
+	| { type: 'seek'; positionSec: number }
+	| { type: 'rate'; rate: number; positionSec: number };
+
 const PROGRESS_INTERVAL_MS = 10_000;
 
 const PREFS_KEY = 'kinema:player:v1';
@@ -88,6 +93,10 @@ function readPrefs(): PlayerPrefs {
 }
 
 export class PlayerController {
+	/** Only explicit controls emit intent; media loading and remote commands do not. */
+	onIntent: ((intent: PlaybackIntent) => void) | null = null;
+	allowAutoplay: () => boolean = () => true;
+	autoplayBlocked = $state(false);
 	/* ------------------------------- состояние ------------------------------ */
 	video = $state<HTMLVideoElement | null>(null);
 	source = $state<PlaybackSource | null>(null);
@@ -138,6 +147,8 @@ export class PlayerController {
 	private progressTimer: ReturnType<typeof setInterval> | null = null;
 	private target: PlayerTarget | null = null;
 	private destroyed = false;
+	private loadGeneration = 0;
+	private syncPlaybackRate: number | null = null;
 
 	/* ------------------------------ производные ----------------------------- */
 
@@ -188,6 +199,7 @@ export class PlayerController {
 			resumeSec?: number;
 		} = {}
 	): Promise<void> {
+		const generation = ++this.loadGeneration;
 		this.clearRetryTimer();
 		// Ручной запуск (кнопка, эффект) даёт новую серию автоповторов.
 		if (!opts.autoRetry) {
@@ -227,7 +239,7 @@ export class PlayerController {
 			}
 
 			let source = (await res.json()) as PlaybackSource;
-			if (this.destroyed) return;
+			if (this.destroyed || generation !== this.loadGeneration) return;
 
 			// Запомненная озвучка: у торрентов каждая дорожка — готовый манифест в
 			// этом же ответе, ставим её сразу. Явный audioStreamIndex в запросе
@@ -255,15 +267,16 @@ export class PlayerController {
 			*/
 			const serverPos = source.startPositionSec && source.startPositionSec > 1 ? source.startPositionSec : undefined;
 			await this.attach(source, resumeAt ?? serverPos ?? opts.resumeSec ?? 0);
+			if (this.destroyed || generation !== this.loadGeneration) return;
 			this.status = 'ready';
 			this.retryCount = 0;
 			this.startProgressReporting();
 
 			// Стартуем сразу: переход на страницу просмотра — это жест
 			// пользователя, политику автовоспроизведения он удовлетворяет.
-			void this.play();
+			if (this.allowAutoplay()) void this.play();
 		} catch (e) {
-			if (this.destroyed) return;
+			if (this.destroyed || generation !== this.loadGeneration) return;
 			const msg = e instanceof Error ? e.message : 'Не удалось загрузить поток';
 			this.teardownMedia();
 
@@ -351,7 +364,7 @@ export class PlayerController {
 				if (this.source) this.source = { ...this.source, streamUrl: next.url };
 				await this.attach({ ...this.source, streamUrl: next.url } as PlaybackSource, resumeAt);
 				this.status = 'ready';
-				if (wasPlaying) void this.play();
+				if (wasPlaying && this.allowAutoplay()) void this.play();
 			} catch (e) {
 				this.status = 'error';
 				this.errorMessage = e instanceof Error ? e.message : 'Не удалось переключить озвучку';
@@ -362,7 +375,7 @@ export class PlayerController {
 		await this.load(this.target, { audioStreamIndex: next.audioStreamIndex });
 
 		// Пользователь смотрел — пусть смотрит дальше, без лишнего клика.
-		if (wasPlaying) void this.play();
+		if (wasPlaying && this.allowAutoplay()) void this.play();
 	}
 
 	/* ------------------------------ выбор раздачи ---------------------------- */
@@ -635,11 +648,14 @@ export class PlayerController {
 
 	/* -------------------------------- контролы ------------------------------- */
 
-	async play(): Promise<void> {
+	async play(): Promise<boolean> {
 		try {
 			await this.video?.play();
-		} catch {
-			// Автовоспроизведение заблокировано политикой браузера — ждём жеста.
+			this.autoplayBlocked = false;
+			return Boolean(this.video && !this.video.paused);
+		} catch (e) {
+			this.autoplayBlocked = e instanceof Error && e.name === 'NotAllowedError';
+			return false;
 		}
 	}
 
@@ -648,13 +664,15 @@ export class PlayerController {
 	}
 
 	togglePlay(): void {
+		this.onIntent?.({ type: 'state', paused: !this.paused, positionSec: this.video?.currentTime ?? this.currentTime });
 		if (this.paused) void this.play();
 		else this.pause();
 	}
 
-	seek(seconds: number): void {
+	seek(seconds: number, notify = true): void {
 		if (!this.video || !Number.isFinite(seconds)) return;
 		const target = Math.max(0, Math.min(seconds, this.duration || seconds));
+		if (notify) this.onIntent?.({ type: 'seek', positionSec: target });
 
 		// Цель фиксируем сразу: интерфейс должен встать в новую точку в тот же
 		// кадр, не дожидаясь, пока догрузится сегмент.
@@ -739,11 +757,19 @@ export class PlayerController {
 		this.savePrefs();
 	}
 
-	setRate(rate: number): void {
+	setRate(rate: number, notify = true): void {
+		this.syncPlaybackRate = null;
+		if (notify) this.onIntent?.({ type: 'rate', rate, positionSec: this.video?.currentTime ?? this.currentTime });
 		this.playbackRate = rate;
 		if (this.video) this.video.playbackRate = rate;
 		this.prefs.rate = rate;
 		this.savePrefs();
+	}
+
+	/** Transient drift correction must not overwrite the speed preference or UI. */
+	setSyncRate(rate: number | null): void {
+		this.syncPlaybackRate = rate;
+		if (this.video) this.video.playbackRate = rate ?? this.playbackRate;
 	}
 
 	private savePrefs(): void {
@@ -771,7 +797,9 @@ export class PlayerController {
 		this.playbackRate = this.prefs.rate;
 
 		const onTime = () => (this.currentTime = video.currentTime);
-		const onRate = () => (this.playbackRate = video.playbackRate);
+		const onRate = () => {
+			if (video.playbackRate !== this.syncPlaybackRate) this.playbackRate = video.playbackRate;
+		};
 		const onSeeking = () => (this.seeking = true);
 		const onSeeked = () => {
 			// Доехали — отпускаем интерфейс на фактическое время.
@@ -896,11 +924,19 @@ export class PlayerController {
 
 	destroy(): void {
 		this.destroyed = true;
+		this.loadGeneration += 1;
 		this.clearRetryTimer();
 		void this.report('stopped');
 		this.stopProgressReporting();
 		this.teardownMedia();
 		this.video = null;
+		this.source = null;
+		this.status = 'idle';
+		this.currentTime = 0;
+		this.duration = 0;
+		this.paused = true;
+		this.pendingSeekTime = null;
+		this.seeking = false;
 	}
 }
 

@@ -8,23 +8,27 @@
 
 import asyncio
 import json
+import math
 import random
 import re
+import secrets
 import time
+from urllib.parse import parse_qs, urlencode, urlsplit
 
 from websockets.asyncio.server import serve
 from websockets.exceptions import ConnectionClosed
 
 ALPHABET = "23456789ABCDEFGHJKLMNPQRSTUVWXYZ"  # без 0/O/1/I — код читаем на слух
 ROOM_TTL_S = 600        # пустая комната живёт 10 минут (запас на перезагрузку страницы)
-STATE_SYNC_S = 10.0     # фоновая сверка состояния — лечит потерянные события
+STATE_SYNC_S = 3.0
 MAX_PEERS = 20
 MAX_NAME = 24
 MAX_CHAT = 300
 MAX_TARGET = 300
 CHAT_BURST = 5          # сообщений за окно
 CHAT_WINDOW_S = 1.0
-COUNTDOWN_MS = 5000
+COUNTDOWN_MS = 3000
+RECONNECT_GRACE_S = 12
 
 ALLOWED_ORIGIN = re.compile(
     r"^https://([\w-]+\.)*vercel\.app$"
@@ -37,13 +41,43 @@ def now_ms() -> int:
     return int(time.time() * 1000)
 
 
+def valid_position(value) -> bool:
+    return isinstance(value, (int, float)) and not isinstance(value, bool) and math.isfinite(value) and 0 <= value <= 604800
+
+
+def watch_href(value) -> str | None:
+    if not isinstance(value, str) or not value.startswith('/') or value.startswith('//') or len(value) > MAX_TARGET:
+        return None
+    url = urlsplit(value)
+    if not re.fullmatch(r'/(movie|show)/[^/]+/watch', url.path):
+        return None
+    query = parse_qs(url.query)
+    params = {key: query[key][0] for key in sorted(('season', 'episode', 's', 'e')) if key in query and query[key][0].isdigit()}
+    return url.path + ('?' + urlencode(params) if params else '')
+
+
+def position(room: 'Room') -> float:
+    st = room.state
+    elapsed = 0 if st['paused'] or st['buffering'] else max(0, now_ms() - st['anchorTs']) / 1000
+    return st['positionSec'] + elapsed * st['rate']
+
+
+def reanchor(room: 'Room', pos: float | None = None) -> None:
+    room.state['positionSec'] = position(room) if pos is None else pos
+    room.state['anchorTs'] = now_ms()
+    room.state['revision'] += 1
+
+
 class Peer:
-    def __init__(self, ws, peer_id: str, name: str):
+    def __init__(self, ws, peer_id: str, name: str, protocol: int = 1):
         self.ws = ws
         self.id = peer_id
         self.name = name
         self.joined = time.monotonic()
         self.buffering = False
+        self.ready = protocol < 2
+        self.protocol = protocol
+        self.resume_token = secrets.token_urlsafe(24)
         self.chat_times: list[float] = []
 
 
@@ -54,6 +88,9 @@ class Room:
         self.host_id: str | None = None
         self.empty_since: float | None = None
         self.sync_task: asyncio.Task | None = None
+        self.host_task: asyncio.Task | None = None
+        self.disconnected: dict[str, tuple[Peer, float]] = {}
+        self.pending_start = False
         self.state = {
             "targetHref": "",
             "paused": True,
@@ -61,6 +98,10 @@ class Room:
             "anchorTs": now_ms(),
             "translationLabel": None,
             "torrent": None,
+            "rate": 1.0,
+            "buffering": False,
+            "waitingForReady": False,
+            "revision": 0,
         }
 
     def presence_payload(self, why: str = "") -> dict:
@@ -69,23 +110,24 @@ class Room:
             "why": why,
             "hostId": self.host_id,
             "peers": [
-                {"id": p.id, "name": p.name, "buffering": p.buffering}
+                {"id": p.id, "name": p.name, "buffering": p.buffering, "ready": p.ready}
                 for p in self.peers.values()
             ],
         }
 
     def state_payload(self, by: str | None) -> dict:
-        return {"type": "state", "by": by, **self.state}
+        return {"type": "state", "by": by, "serverTs": now_ms(), **self.state}
 
     async def broadcast(self, msg: dict, exclude: str | None = None) -> None:
         data = json.dumps(msg)
-        for p in list(self.peers.values()):
+        async def deliver(p):
             if exclude and p.id == exclude:
-                continue
+                return
             try:
                 await p.ws.send(data)
             except ConnectionClosed:
                 pass
+        await asyncio.gather(*(deliver(p) for p in list(self.peers.values())))
 
     def unique_name(self, name: str) -> str:
         names = {p.name for p in self.peers.values()}
@@ -121,18 +163,37 @@ async def send(ws, msg: dict) -> None:
 def handle_sync(room: Room, peer: Peer, msg: dict) -> dict | None:
     """state/seek от любого участника. Возвращает payload для рассылки."""
     st = room.state
+    if peer.protocol >= 2 and msg.get('intent') is not True:
+        return None
+    if watch_href(msg.get('targetHref', st['targetHref'])) != st['targetHref']:
+        return None
+    pos = msg.get('positionSec')
+    if not valid_position(pos):
+        return None
+    reanchor(room, float(pos))
+    room.pending_start = False
+    st['waitingForReady'] = False
     if msg["type"] == "state":
         st["paused"] = bool(msg.get("paused", False))
-        pos = msg.get("positionSec")
-        if isinstance(pos, (int, float)):
-            st["positionSec"] = max(0.0, float(pos))
     elif msg["type"] == "seek":
-        pos = msg.get("positionSec")
-        if not isinstance(pos, (int, float)):
-            return None
-        st["positionSec"] = max(0.0, float(pos))
-    st["anchorTs"] = now_ms()
+        pass
+    elif msg['type'] == 'rate':
+        rate = msg.get('rate')
+        if isinstance(rate, (int, float)) and rate in (0.5, 0.75, 1, 1.25, 1.5, 1.75, 2):
+            st['rate'] = float(rate)
     return room.state_payload(by=peer.id)
+
+
+async def maybe_start(room: Room) -> None:
+    if not room.pending_start or not room.peers or room.host_id not in room.peers:
+        return
+    if not all(p.ready for p in room.peers.values()):
+        return
+    room.pending_start = False
+    reanchor(room)
+    room.state.update(paused=False, buffering=False, waitingForReady=False, anchorTs=now_ms() + COUNTDOWN_MS)
+    await room.broadcast(room.state_payload('server'))
+    await room.broadcast({'type': 'countdown', 'startTs': room.state['anchorTs']})
 
 
 async def handle_message(room: Room, peer: Peer, msg: dict) -> None:
@@ -142,14 +203,15 @@ async def handle_message(room: Room, peer: Peer, msg: dict) -> None:
     if t == "ping":
         await send(peer.ws, {"type": "pong", "t": msg.get("t"), "serverTs": now_ms()})
 
-    elif t in ("state", "seek"):
+    elif t in ("state", "seek", "rate"):
         payload = handle_sync(room, peer, msg)
         if payload:
             await room.broadcast(payload)  # всем, включая автора — зеркало должно быть свежим
 
     elif t == "goto" and is_host:
         href = msg.get("targetHref")
-        if not isinstance(href, str) or not href or len(href) > MAX_TARGET:
+        href = watch_href(href)
+        if not href:
             return
         st = room.state
         st["targetHref"] = href
@@ -160,24 +222,46 @@ async def handle_message(room: Room, peer: Peer, msg: dict) -> None:
         # иначе гости будут применять их уже на другом фильме.
         st["translationLabel"] = None
         st["torrent"] = None
-        await room.broadcast({"type": "goto", "targetHref": href, "by": peer.id})
+        st['buffering'] = False
+        st['waitingForReady'] = False
+        st['revision'] += 1
+        room.pending_start = False
+        for p in room.peers.values():
+            p.ready = p.protocol < 2
+        await room.broadcast(room.state_payload(peer.id))
+        await room.broadcast(room.presence_payload('loading'))
 
     elif t == "translation" and is_host:
         label = msg.get("label")
-        if not isinstance(label, str) or not label or len(label) > 120:
+        if not isinstance(label, str) or not label or len(label) > 500:
             return
+        tor = msg.get('torrent')
+        tor = tor.lower() if isinstance(tor, str) and re.fullmatch(r'[a-fA-F0-9]{40}|[a-zA-Z2-7]{32}', tor) else room.state['torrent']
+        if label == room.state['translationLabel'] and tor == room.state['torrent']:
+            return
+        if not room.state['paused'] or room.pending_start:
+            reanchor(room)
+            room.state.update(paused=True, waitingForReady=True, buffering=False)
+            room.pending_start = True
+        for p in room.peers.values():
+            p.ready = p.protocol < 2
         room.state["translationLabel"] = label
         payload = {"type": "translation", "label": label, "by": peer.id}
         # Раздача, на которой сидит хост: у гостей своя может отличаться,
         # тогда дорожки не сойдутся — переводим их на раздачу хоста.
-        tor = msg.get("torrent")
-        if isinstance(tor, str) and 8 <= len(tor) <= 64:
+        if tor:
             room.state["torrent"] = tor.lower()
             payload["torrent"] = tor.lower()
+        room.state['revision'] += 1
         await room.broadcast(payload)
+        await room.broadcast(room.state_payload(peer.id))
+        await room.broadcast(room.presence_payload('loading'))
 
     elif t == "chat":
-        text = (msg.get("text") or "").strip()[:MAX_CHAT]
+        text = msg.get('text')
+        if not isinstance(text, str):
+            return
+        text = text.strip()[:MAX_CHAT]
         if not text:
             return
         now = time.monotonic()
@@ -197,7 +281,10 @@ async def handle_message(room: Room, peer: Peer, msg: dict) -> None:
         )
 
     elif t == "react":
-        emoji = (msg.get("emoji") or "").strip()[:8]
+        emoji = msg.get('emoji')
+        if not isinstance(emoji, str):
+            return
+        emoji = emoji.strip()[:8]
         if emoji:
             await room.broadcast(
                 {"type": "react", "id": new_peer_id(), "peerId": peer.id, "name": peer.name, "emoji": emoji}
@@ -207,12 +294,40 @@ async def handle_message(room: Room, peer: Peer, msg: dict) -> None:
         peer.buffering = bool(msg.get("buffering", False))
         await room.broadcast(room.presence_payload('buffering'))
 
+    elif t == 'report':
+        st = room.state
+        if watch_href(msg.get('targetHref')) != st['targetHref']:
+            return
+        source_matches = not st['torrent'] or msg.get('torrent') == st['torrent']
+        label_matches = not st['translationLabel'] or msg.get('translationLabel') == st['translationLabel']
+        ready = msg.get('ready') is True and source_matches and label_matches
+        changed = ready != peer.ready or bool(msg.get('buffering')) != peer.buffering
+        peer.ready = ready
+        peer.buffering = bool(msg.get('buffering'))
+        pos = msg.get('positionSec')
+        # Only the host's actual media clock anchors playback, not a guest's lag.
+        # Never let a heartbeat turn a scheduled countdown into an immediate start.
+        if is_host and not st['waitingForReady'] and now_ms() >= st['anchorTs'] and valid_position(pos):
+            buffering = not ready
+            if buffering != st['buffering'] or (not st['paused'] and abs(position(room) - pos) > 0.4):
+                reanchor(room, float(pos))
+                st['buffering'] = buffering
+                await room.broadcast(room.state_payload('server'))
+        if changed:
+            await room.broadcast(room.presence_payload('ready'))
+        await maybe_start(room)
+
     elif t == "countdown" and is_host:
-        await room.broadcast({"type": "countdown", "startTs": now_ms() + COUNTDOWN_MS, "by": peer.id})
+        reanchor(room)
+        room.state.update(paused=True, waitingForReady=True, buffering=False)
+        room.pending_start = True
+        await room.broadcast(room.state_payload('server'))
+        await maybe_start(room)
 
     elif t == "kick" and is_host:
         target = room.peers.get(msg.get("peerId", ""))
         if target and target.id != peer.id:
+            target.resume_token = ''
             await send(target.ws, {"type": "kick", "by": peer.name})
             await target.ws.close(4100, "kicked")
 
@@ -240,11 +355,12 @@ async def handler(ws) -> None:
     try:
         raw = await asyncio.wait_for(ws.recv(), timeout=10)
         hello = json.loads(raw)
-        if hello.get("type") != "hello":
+        if not isinstance(hello, dict) or hello.get("type") != "hello":
             await send(ws, {"type": "error", "code": "bad", "message": "ожидался hello"})
             return
 
-        name = (hello.get("name") or "Гость").strip()[:MAX_NAME] or "Гость"
+        name = hello.get('name')
+        name = name.strip()[:MAX_NAME] if isinstance(name, str) and name.strip() else 'Гость'
         action = hello.get("action")
 
         if action == "create":
@@ -252,22 +368,27 @@ async def handler(ws) -> None:
             room = Room(code)
             ROOMS[code] = room
             st = room.state
-            href = hello.get("targetHref")
-            if isinstance(href, str) and href and len(href) <= MAX_TARGET:
+            href = watch_href(hello.get("targetHref"))
+            if href:
                 st["targetHref"] = href
+            else:
+                del ROOMS[code]
+                await send(ws, {'type': 'error', 'code': 'bad_target', 'message': 'Откройте фильм, чтобы создать комнату'})
+                return
             pos = hello.get("positionSec")
-            if isinstance(pos, (int, float)):
+            if valid_position(pos):
                 st["positionSec"] = max(0.0, float(pos))
             st["paused"] = bool(hello.get("paused", True))
             label = hello.get("translationLabel")
             if isinstance(label, str) and label:
-                st["translationLabel"] = label[:120]
+                st["translationLabel"] = label[:500]
             tor = hello.get("torrent")
             if isinstance(tor, str) and 8 <= len(tor) <= 64:
                 st["torrent"] = tor.lower()
             st["anchorTs"] = now_ms()
         elif action == "join":
-            code = (hello.get("room") or "").strip().upper()
+            code = hello.get('room')
+            code = code.strip().upper() if isinstance(code, str) else ''
             room = ROOMS.get(code)
             if room is None:
                 await send(ws, {"type": "error", "code": "room_not_found", "message": "комната не найдена"})
@@ -279,11 +400,27 @@ async def handler(ws) -> None:
             await send(ws, {"type": "error", "code": "bad", "message": "неизвестное действие"})
             return
 
-        peer = Peer(ws, new_peer_id(), room.unique_name(name))
+        token = hello.get('resumeToken')
+        previous = room.disconnected.pop(token, None) if isinstance(token, str) else None
+        if previous and previous[1] > time.monotonic():
+            old = previous[0]
+            peer = Peer(ws, old.id, old.name, int(hello.get('protocol', 1)))
+        else:
+            peer = Peer(ws, new_peer_id(), room.unique_name(name), int(hello.get('protocol', 1)))
         room.peers[peer.id] = peer
         room.empty_since = None
         if room.host_id is None or room.host_id == peer.id:
             room.host_id = peer.id
+            if room.host_task:
+                room.host_task.cancel()
+                room.host_task = None
+
+        # Late joiners must finish loading before the group clock runs away.
+        # Freeze at the current room position and restart with the same barrier.
+        if len(room.peers) > 1 and peer.protocol >= 2 and not room.state['paused']:
+            reanchor(room)
+            room.state.update(paused=True, waitingForReady=True, buffering=False)
+            room.pending_start = True
 
         await send(
             ws,
@@ -295,9 +432,12 @@ async def handler(ws) -> None:
                 "peers": room.presence_payload()["peers"],
                 "state": room.state,
                 "serverTs": now_ms(),
+                "resumeToken": peer.resume_token,
+                "protocol": 2,
             },
         )
         await room.broadcast(room.presence_payload('join'))
+        await room.broadcast(room.state_payload('server'))
         if room.sync_task is None or room.sync_task.done():
             room.sync_task = asyncio.create_task(state_sync_loop(room))
 
@@ -310,21 +450,33 @@ async def handler(ws) -> None:
                 continue
             await handle_message(room, peer, msg)
 
-    except (ConnectionClosed, asyncio.TimeoutError):
+    except (ConnectionClosed, asyncio.TimeoutError, ValueError, TypeError):
         pass
     finally:
-        if room and peer:
+        if room and peer and room.peers.get(peer.id) is peer:
             room.peers.pop(peer.id, None)
+            if peer.resume_token:
+                room.disconnected[peer.resume_token] = (peer, time.monotonic() + ROOM_TTL_S)
             if not room.peers:
                 room.empty_since = time.monotonic()
-                room.host_id = None
                 if room.sync_task:
                     room.sync_task.cancel()
                     room.sync_task = None
-            elif room.host_id == peer.id:
-                # Хост вышел — власть переходит к самому раннему участнику.
-                room.host_id = next(iter(room.peers))
+            if room.host_id == peer.id:
+                reanchor(room)
+                room.state['buffering'] = True
+                await room.broadcast(room.state_payload('server'))
+                room.host_task = asyncio.create_task(transfer_host(room, peer.id))
             await room.broadcast(room.presence_payload('leave'))
+            await maybe_start(room)
+
+
+async def transfer_host(room: Room, previous_id: str) -> None:
+    await asyncio.sleep(RECONNECT_GRACE_S)
+    if room.host_id == previous_id and previous_id not in room.peers:
+        room.host_id = next(iter(room.peers), None)
+        await room.broadcast(room.presence_payload('host'))
+        await maybe_start(room)
 
 
 async def cleanup_loop() -> None:
@@ -332,6 +484,7 @@ async def cleanup_loop() -> None:
         await asyncio.sleep(60)
         t = time.monotonic()
         for code, room in list(ROOMS.items()):
+            room.disconnected = {token: entry for token, entry in room.disconnected.items() if entry[1] > t}
             if not room.peers and room.empty_since and t - room.empty_since > ROOM_TTL_S:
                 del ROOMS[code]
 

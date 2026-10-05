@@ -16,7 +16,10 @@
 		sendReact,
 		kick,
 		startCountdown,
-		withPartyParams
+		withPartyParams,
+		invitationUrl,
+		sendState,
+		sharedPosition
 	} from '$lib/party.svelte';
 	import { toMediaSlug } from '$lib/slug';
 	import type { CatalogItem } from '$lib/types';
@@ -31,6 +34,7 @@
 	let draft = $state('');
 	let feed: HTMLElement | null = $state(null);
 	let copied = $state(false);
+	let inviteError = $state('');
 
 	const REACTIONS = ['❤️', '😂', '👍', '😮'];
 
@@ -56,14 +60,20 @@
 	}
 
 	async function copyInvite() {
-		const link = `${location.origin}${location.pathname}?room=${party.roomCode}`;
+		const link = invitationUrl();
 		try {
 			await navigator.clipboard.writeText(link);
 			copied = true;
 			setTimeout(() => (copied = false), 1500);
 		} catch {
-			/* без буфера обмена — покажем ссылку */
+			inviteError = 'Выделите и скопируйте ссылку ниже';
 		}
+	}
+
+	async function shareInvite() {
+		if (!navigator.share) { await copyInvite(); return; }
+		try { await navigator.share({ title: 'Смотрим вместе в КИХЕМА', url: invitationUrl() }); }
+		catch (e) { if (!(e instanceof Error && e.name === 'AbortError')) await copyInvite(); }
 	}
 
 	function formatTime(ts: number): string {
@@ -121,7 +131,7 @@
 </script>
 
 <div
-	class="party-panel-in flex h-full w-80 max-w-[50vw] shrink-0 flex-col border-l border-white/12
+	class="party-panel-in fixed inset-y-0 right-0 z-50 flex h-full w-80 max-w-[92vw] shrink-0 flex-col border-l border-white/12 sm:relative sm:inset-auto sm:z-auto sm:max-w-[50vw]
 	       bg-canvas/97 backdrop-blur-xl"
 >
 	<!-- Заголовок: код комнаты, приглашение, выход -->
@@ -163,11 +173,23 @@
 		</div>
 	</div>
 
+	<div class="border-b border-white/10 p-3">
+		<p class="mb-2 text-[12px] text-white/60">Пригласите друзей по ссылке — код вводить не нужно.</p>
+		<input aria-label="Ссылка-приглашение" readonly value={invitationUrl()}
+			onclick={(event) => event.currentTarget.select()}
+			class="h-9 w-full rounded-lg border border-white/15 bg-black/30 px-2.5 text-[11px] text-white/70" />
+		<div class="mt-2 flex gap-2">
+			<button type="button" onclick={() => void copyInvite()} class="h-10 flex-1 rounded-full bg-accent text-xs font-semibold text-accent-ink">{copied ? 'Ссылка скопирована' : 'Скопировать ссылку'}</button>
+			<button type="button" onclick={() => void shareInvite()} class="h-10 rounded-full border border-white/20 px-3 text-xs text-white">Поделиться</button>
+		</div>
+		{#if inviteError}<p class="mt-2 text-[11px] text-white/50">{inviteError}</p>{/if}
+	</div>
+
 	<!-- Участники -->
 	<div class="max-h-40 overflow-y-auto border-b border-white/10 px-3 py-2">
 		{#each party.peers as p (p.id)}
 			<div class="flex items-center gap-2 py-1 text-[13px] text-white/85">
-				{#if p.buffering}
+				{#if p.buffering || !p.ready}
 					<span
 						class="h-2.5 w-2.5 shrink-0 animate-spin rounded-full border border-white/25
 						       border-t-accent"
@@ -180,6 +202,7 @@
 					{p.name}
 					{#if p.id === party.selfId}<span class="text-white/40">(вы)</span>{/if}
 				</span>
+				<span class="ml-auto text-[10px] text-white/40">{p.ready ? 'Готов' : 'Загружается'}</span>
 				{#if p.id === party.hostId}
 					<Icon name="crown" size={13} class="shrink-0 text-amber-300" />
 				{/if}
@@ -214,14 +237,21 @@
 			<button
 				type="button"
 				onclick={() => startCountdown()}
+				disabled={party.roomState?.waitingForReady}
 				class="ml-auto h-8 rounded-full border border-accent/60 px-3 text-[12px] font-semibold
 				       text-accent transition hover:bg-accent hover:text-accent-ink"
 				title="Отсчёт 3-2-1 и одновременный старт"
 			>
-				Старт вместе
+				{party.roomState?.waitingForReady ? 'Ждём зрителей' : 'Старт вместе'}
 			</button>
 		{/if}
 	</div>
+	{#if party.roomState?.waitingForReady}
+		<div class="border-b border-white/10 px-3 py-2 text-xs text-white/60" role="status">
+			Готовы {party.peers.filter((p) => p.ready).length} из {party.peers.length}. Начнём вместе после загрузки.
+			{#if isHost()}<button type="button" onclick={() => sendState(true, sharedPosition())} class="mt-1 block text-accent">Отменить ожидание</button>{/if}
+		</div>
+	{/if}
 
 	<!-- Смена фильма (только хост) -->
 	{#if isHost()}

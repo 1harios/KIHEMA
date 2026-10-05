@@ -11,12 +11,15 @@
  * сверять часы с сервером (ping/pong), а не гонять время каждую секунду.
  */
 
+import { roomCodeFrom, roomPosition, watchHref } from './party-sync';
+
 export type PartyStatus = 'idle' | 'connecting' | 'in-room' | 'reconnecting' | 'error';
 
 export interface PartyPeer {
 	id: string;
 	name: string;
 	buffering: boolean;
+	ready?: boolean;
 }
 
 export interface ChatMessage {
@@ -46,6 +49,10 @@ export interface RoomState {
 	translationLabel: string | null;
 	/** Раздача (infoHash), на которой сидит хост, — гости выравниваются на неё. */
 	torrent: string | null;
+	rate?: number;
+	buffering?: boolean;
+	waitingForReady?: boolean;
+	revision?: number;
 }
 
 /** Снимок текущего воспроизведения — отправляется при создании комнаты. */
@@ -102,6 +109,8 @@ let connectResolve: ((code: string) => void) | null = null;
 let connectReject: ((err: Error) => void) | null = null;
 let pingSamples: number[] = [];
 let toastSeq = 0;
+let resumeToken = '';
+let connectionAttempt = 0;
 
 /**
  * Подавление эха. Видео-события (pause/seeked) приходят асинхронно после
@@ -167,12 +176,19 @@ export function withPartyParams(href: string): string {
 	}
 }
 
+export function invitationUrl(): string {
+	return party.roomCode && typeof location !== 'undefined'
+		? `${location.origin}/party/${party.roomCode}`
+		: '';
+}
+
+export const serverNow = () => Date.now() + clockOffset;
+
 /** Где комната находится сейчас, с учётом хода времени. */
 export function sharedPosition(): number {
 	const st = party.roomState;
 	if (!st) return 0;
-	if (st.paused) return st.positionSec;
-	return st.positionSec + (Date.now() + clockOffset - st.anchorTs) / 1000;
+	return roomPosition(st, serverNow());
 }
 
 function reset(): void {
@@ -197,13 +213,16 @@ function reset(): void {
 	party.countdownUntil = 0;
 	party.error = null;
 	lastRemote = null;
+	resumeToken = '';
+	clockOffset = 0;
+	pingSamples = [];
 }
 
 /* ------------------------------ подключение ------------------------------ */
 
 async function discoverUrl(): Promise<string | null> {
 	try {
-		const res = await fetch('/api/party/url', { cache: 'no-store' });
+		const res = await fetch('/api/party/url', { cache: 'no-store', signal: AbortSignal.timeout(8_000) });
 		if (!res.ok) return null;
 		const data = (await res.json()) as { url?: string };
 		return data.url ?? null;
@@ -216,8 +235,11 @@ function openSocket(url: string, hello: Record<string, unknown>): void {
 	intentionalClose = false;
 	const sock = new WebSocket(url.replace(/^http/, 'ws'));
 	ws = sock;
-	sock.onopen = () => sock.send(JSON.stringify(hello));
+	sock.onopen = () => {
+		if (sock === ws) sock.send(JSON.stringify({ ...hello, protocol: 2 }));
+	};
 	sock.onmessage = (e) => {
+		if (sock !== ws) return;
 		try {
 			handleMessage(JSON.parse(String(e.data)));
 		} catch {
@@ -229,6 +251,13 @@ function openSocket(url: string, hello: Record<string, unknown>): void {
 		handleClose();
 	};
 	sock.onerror = () => sock.close();
+	if (connectTimer) clearTimeout(connectTimer);
+	connectTimer = setTimeout(() => {
+		if (sock !== ws || party.status === 'in-room') return;
+		sock.close();
+		ws = null;
+		handleClose();
+	}, 12_000);
 }
 
 async function connect(
@@ -237,44 +266,38 @@ async function connect(
 	name: string,
 	snap: RoomSnapshot | null
 ): Promise<string> {
-	if (party.status === 'connecting') throw new Error('Уже подключаемся');
+	if (party.status === 'connecting' || inParty()) throw new Error('Уже подключены или подключаемся');
+	const attempt = ++connectionAttempt;
 
 	party.status = 'connecting';
 	party.error = null;
 
 	const url = await discoverUrl();
+	if (attempt !== connectionAttempt) throw new Error('Подключение отменено');
 	if (!url) {
 		party.status = 'error';
 		party.error = 'Сервер комнат недоступен';
 		throw new Error('Сервер комнат недоступен');
 	}
 
-	openSocket(url, {
-		type: 'hello',
-		action,
-		room: code ?? undefined,
-		name,
-		targetHref: snap?.targetHref,
-		positionSec: snap?.positionSec,
-		paused: snap?.paused,
-		translationLabel: snap?.translationLabel,
-		torrent: snap?.torrent ?? undefined
-	});
-
 	return new Promise<string>((resolve, reject) => {
 		connectResolve = resolve;
 		connectReject = reject;
-		connectTimer = setTimeout(() => {
+		try {
+			let savedToken: string | null = null;
+			try { savedToken = sessionStorage.getItem(`kinema:party:resume:${code}`); } catch { /* private mode */ }
+			openSocket(url, {
+				type: 'hello', action, room: code ?? undefined, name,
+				resumeToken: action === 'join' ? savedToken ?? undefined : undefined,
+				targetHref: snap?.targetHref, positionSec: snap?.positionSec, paused: snap?.paused,
+				translationLabel: snap?.translationLabel, torrent: snap?.torrent ?? undefined
+			});
+		} catch {
 			connectResolve = connectReject = null;
-			intentionalClose = true;
-			ws?.close();
-			ws = null;
-			if (party.status === 'connecting') {
-				party.status = 'error';
-				party.error = 'Сервер комнат не ответил';
-			}
-			reject(new Error('Сервер комнат не ответил'));
-		}, 12_000);
+			party.status = 'error';
+			party.error = 'Не удалось открыть соединение с комнатой';
+			reject(new Error(party.error));
+		}
 	});
 }
 
@@ -287,12 +310,18 @@ export async function create(name: string, snap: RoomSnapshot): Promise<string> 
 
 /** Войти в комнату по коду. */
 export async function join(code: string, name: string, snap: RoomSnapshot | null): Promise<void> {
-	await connect('join', code.toUpperCase(), name, snap);
+	const parsed = roomCodeFrom(code);
+	if (!parsed) throw new Error('Введите шестизначный код или ссылку-приглашение');
+	await connect('join', parsed, name, snap);
 	rememberName(name);
 }
 
 /** Покинуть комнату (или закрыть её, если ты последний). */
 export function leave(): void {
+	connectionAttempt += 1;
+	connectReject?.(new Error('Подключение отменено'));
+	connectResolve = connectReject = null;
+	try { sessionStorage.removeItem(`kinema:party:resume:${party.roomCode}`); } catch { /* private mode */ }
 	intentionalClose = true;
 	const sock = ws;
 	ws = null;
@@ -307,6 +336,8 @@ function handleClose(): void {
 	if (intentionalClose) return;
 	if (heartbeatTimer) clearInterval(heartbeatTimer);
 	heartbeatTimer = null;
+	if (connectTimer) clearTimeout(connectTimer);
+	connectTimer = null;
 	const wasConnecting = connectReject != null;
 
 	// Не было welcome — проваливаем рукопожатие.
@@ -321,15 +352,16 @@ function handleClose(): void {
 		return;
 	}
 
-	if (party.status !== 'in-room') return;
+	if (party.status !== 'in-room' && party.status !== 'reconnecting') return;
 	party.status = 'reconnecting';
 	scheduleReconnect();
 }
 
 function scheduleReconnect(): void {
+	if (retryTimer) clearTimeout(retryTimer);
 	const delay = Math.min(MAX_RECONNECT_DELAY_MS, 1000 * 2 ** retryCount);
 	retryCount += 1;
-	retryTimer = setTimeout(() => void reconnect(), delay);
+	retryTimer = setTimeout(() => { retryTimer = null; void reconnect(); }, delay);
 }
 
 /**
@@ -347,11 +379,31 @@ async function reconnect(): Promise<void> {
 		return;
 	}
 
-	openSocket(url, { type: 'hello', action: 'join', room: code, name });
+	if (party.status !== 'reconnecting' || party.roomCode !== code) return;
+	try {
+		openSocket(url, { type: 'hello', action: 'join', room: code, name, resumeToken });
+	} catch {
+		scheduleReconnect();
+	}
 	// Дальше либо welcome (handleMessage снимет reconnecting), либо ошибка.
 }
 
 /* ------------------------------ обработка WS ----------------------------- */
+
+function acceptState(raw: Partial<RoomState>, by: string): void {
+	if ((raw.revision ?? 0) < (party.roomState?.revision ?? 0)) return;
+	party.roomState = {
+		targetHref: watchHref(raw.targetHref ?? '') ?? '', paused: Boolean(raw.paused),
+		positionSec: Number(raw.positionSec ?? 0), anchorTs: Number(raw.anchorTs ?? serverNow()),
+		translationLabel: raw.translationLabel ?? null, torrent: raw.torrent ?? null,
+		rate: raw.rate ?? 1, buffering: Boolean(raw.buffering),
+		waitingForReady: Boolean(raw.waitingForReady), revision: raw.revision ?? 0
+	};
+	party.stateBy = by;
+	party.translationBy = by;
+	const st = party.roomState;
+	party.countdownUntil = !st.paused && st.anchorTs > serverNow() ? st.anchorTs - clockOffset : 0;
+}
 
 function handleMessage(m: Record<string, unknown>): void {
 	switch (m.type) {
@@ -364,24 +416,18 @@ function handleMessage(m: Record<string, unknown>): void {
 			party.selfName = String((m.self as { name: string }).name);
 			party.hostId = String(m.hostId);
 			party.peers = m.peers as PartyPeer[];
+			clockOffset = Number(m.serverTs) - Date.now();
+			resumeToken = typeof m.resumeToken === 'string' ? m.resumeToken : '';
+			try { sessionStorage.setItem(`kinema:party:resume:${party.roomCode}`, resumeToken); } catch { /* private mode */ }
 			const st = m.state as Partial<RoomState> | null;
-			party.roomState = st
-				? {
-						targetHref: st.targetHref ?? '',
-						paused: Boolean(st.paused),
-						positionSec: Number(st.positionSec ?? 0),
-						anchorTs: Number(st.anchorTs ?? Date.now()),
-						translationLabel: st.translationLabel ?? null,
-						torrent: st.torrent ?? null
-					}
-				: null;
+			party.roomState = null; // New server/room may restart revision numbers.
+			if (st) acceptState(st, 'server');
 			// При входе применяем состояние комнаты (позицию выровняет плеер).
 			party.stateBy = 'server';
 			party.translationBy = 'server';
 			party.status = 'in-room';
 			party.error = null;
 			retryCount = 0;
-			clockOffset = Number(m.serverTs) - Date.now();
 			setRoomParam(party.roomCode);
 			startClockSync();
 			startHeartbeat();
@@ -397,6 +443,7 @@ function handleMessage(m: Record<string, unknown>): void {
 			if (party.status === 'reconnecting') {
 				// Сервер комнат перезапущен — комнат больше нет.
 				intentionalClose = true;
+				ws?.close();
 				ws = null;
 				reset();
 				setRoomParam(null);
@@ -423,16 +470,7 @@ function handleMessage(m: Record<string, unknown>): void {
 		}
 
 		case 'state': {
-			const { by, ...rest } = m as unknown as { by?: string } & RoomState;
-			party.roomState = {
-				targetHref: rest.targetHref,
-				paused: rest.paused,
-				positionSec: rest.positionSec,
-				anchorTs: rest.anchorTs,
-				translationLabel: rest.translationLabel ?? null,
-				torrent: rest.torrent ?? null
-			};
-			party.stateBy = by ?? null;
+			acceptState(m as unknown as RoomState, String(m.by ?? 'server'));
 			break;
 		}
 
@@ -488,7 +526,7 @@ function handleMessage(m: Record<string, unknown>): void {
 		}
 
 		case 'countdown': {
-			const until = Number(m.startTs) + clockOffset;
+			const until = Number(m.startTs) - clockOffset;
 			party.countdownUntil = until;
 			if (countdownTimer) clearTimeout(countdownTimer);
 			countdownTimer = setTimeout(() => (party.countdownUntil = 0), Math.max(0, until - Date.now()) + 600);
@@ -562,14 +600,24 @@ function send(msg: Record<string, unknown>): void {
 /** Пауза/пуск от любого участника. */
 export function sendState(paused: boolean, positionSec: number): void {
 	if (party.status !== 'in-room') return;
-	if (isEcho(paused, positionSec)) return;
-	send({ type: 'state', paused, positionSec });
+	send({ type: 'state', paused, positionSec, intent: true, targetHref: party.roomState?.targetHref });
 }
 
 export function sendSeek(positionSec: number): void {
 	if (party.status !== 'in-room') return;
-	if (isEcho(party.roomState?.paused ?? false, positionSec)) return;
-	send({ type: 'seek', positionSec });
+	send({ type: 'seek', positionSec, intent: true, targetHref: party.roomState?.targetHref });
+}
+
+export function sendRate(rate: number, positionSec: number): void {
+	if (party.status !== 'in-room') return;
+	send({ type: 'rate', rate, positionSec, intent: true, targetHref: party.roomState?.targetHref });
+}
+
+export function reportPlayback(report: {
+	targetHref: string; ready: boolean; buffering: boolean; positionSec: number;
+	torrent: string | null; translationLabel: string | null;
+}): void {
+	if (party.status === 'in-room') send({ type: 'report', ...report });
 }
 
 /** Смена фильма/серии — право хоста. */

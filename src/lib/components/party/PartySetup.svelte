@@ -11,6 +11,7 @@
 		join as joinRoom
 	} from '$lib/party.svelte';
 	import type { RoomSnapshot } from '$lib/party.svelte';
+	import { roomCodeFrom } from '$lib/party-sync';
 	import Icon from '../ui/Icon.svelte';
 
 	interface Props {
@@ -40,9 +41,9 @@
 	}
 
 	async function doJoin() {
-		const c = code.trim().toUpperCase();
-		if (c.length < 4) {
-			error = 'Введите код комнаты';
+		const c = roomCodeFrom(code);
+		if (!c) {
+			error = 'Введите код из 6 символов или ссылку-приглашение';
 			return;
 		}
 		busy = true;
@@ -90,7 +91,7 @@
 
 	<div class="mb-3 flex items-center gap-2 text-[11px] text-white/30">
 		<span class="h-px flex-1 bg-white/10"></span>
-		или войдите по коду
+		или по ссылке / коду
 		<span class="h-px flex-1 bg-white/10"></span>
 	</div>
 
@@ -103,18 +104,16 @@
 	>
 		<input
 			bind:value={code}
-			maxlength="6"
-			placeholder="КОД"
-			aria-label="Код комнаты"
-			class="tnum h-9 w-24 rounded-md border border-white/15 bg-black/30 px-3 text-center text-[13px]
-			       font-semibold uppercase tracking-widest text-white outline-none transition
-			       placeholder:tracking-normal placeholder:text-white/30 focus:border-accent"
-			oninput={() => (code = code.toUpperCase())}
+			maxlength="500"
+			placeholder="Ссылка или код"
+			aria-label="Ссылка или код комнаты"
+			class="h-10 min-w-0 flex-1 rounded-md border border-white/15 bg-black/30 px-3 text-[12px]
+			       text-white outline-none transition placeholder:text-white/30 focus:border-accent"
 		/>
 		<button
 			type="submit"
 			disabled={busy || party.status === 'connecting'}
-			class="h-9 flex-1 rounded-full border border-white/20 text-[13px] font-semibold text-white
+			class="h-10 rounded-full border border-white/20 px-3 text-[13px] font-semibold text-white
 			       transition hover:border-white/45 disabled:opacity-50"
 		>
 			Войти

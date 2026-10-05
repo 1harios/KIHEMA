@@ -35,7 +35,7 @@ setTimeout(()=>{emit('player:ready');if(!deferTimeline){loaded=true;emit('player
 setInterval(()=>{if(!paused&&!ad)time+=.25;emit('player:currentTime',{time});},250);
 </script></body></html>`;
 async function viewer(name, viewport = { width: 1280, height: 800 }) {
-	const context = await browser.newContext({ viewport });
+	const context = await browser.newContext({ viewport, ...(viewport.width < 500 ? { isMobile: true, hasTouch: true, userAgent: 'Mozilla/5.0 (iPhone; CPU iPhone OS 18_0 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) CriOS/140.0 Mobile/15E148 Safari/604.1' } : {}) });
 	const page = await context.newPage();
 	page.on('pageerror', (error) => errors.push(`${name}: ${error.message}`));
 	page.on('websocket', (socket) => socket.on('framereceived', ({ payload }) => {
@@ -44,8 +44,8 @@ async function viewer(name, viewport = { width: 1280, height: 800 }) {
 	await page.route('https://rutube.ru/play/embed/**', (route) => route.fulfill({ contentType: 'text/html; charset=utf-8', body: name === 'guest' ? fixture.replace('const deferTimeline=false;', 'const deferTimeline=true;') : fixture }));
 	if (viewport.width < 500) await page.addInitScript(() => {
 		HTMLElement.prototype.requestFullscreen = async () => { throw new Error('Test mobile fallback'); };
-		window.__testViewportHeight = innerHeight;
-		Object.defineProperty(visualViewport, 'height', { get: () => window.__testViewportHeight });
+		window.__testViewportHeight = null;
+		Object.defineProperty(visualViewport, 'height', { get: () => window.__testViewportHeight ?? innerHeight });
 	});
 	return page;
 }
@@ -94,7 +94,7 @@ try {
 	await chooseQuality(host, '1080p');
 	assert.equal((await read(host)).quality, '1080');
 	assert.ok((await read(host)).controlsHidden, 'One control bar, no native duplicate');
-	await control(host, 'Качество RUTUBE');
+	await control(host, 'Громкость');
 	await host.getByLabel('Громкость RUTUBE').evaluate((input) => { input.value = '0.35'; input.dispatchEvent(new Event('input', { bubbles: true })); });
 	assert.equal((await read(host)).volume, .35);
 	await host.getByRole('button', { name: 'Выключить звук', exact: true }).click();
@@ -136,6 +136,7 @@ try {
 	assert.ok(await guest.getByRole('region', { name: 'Настройки плеера RUTUBE' }).isVisible(), 'Quality menu does not auto-hide while being used');
 	await guest.keyboard.press('Escape');
 	await control(guest, 'Полный экран');
+	await guest.getByRole('dialog', { name: 'Просмотр без адресной строки' }).getByRole('button', { name: 'Понятно', exact: true }).click();
 	await control(guest, 'Открыть чат');
 	assert.equal(await guest.locator('.rutube-room.page-fullscreen').count(), 1);
 	assert.equal(await guest.getByLabel('Ссылка-приглашение').count(), 0);
@@ -146,6 +147,28 @@ try {
 	await Promise.all([host.getByLabel('Реакции участников').getByText('😂', { exact: true }).waitFor(), guest.getByLabel('Реакции участников').getByText('😂', { exact: true }).waitFor()]);
 	await host.getByRole('button', { name: 'Реакция ❤️', exact: true }).click();
 	await Promise.all([host.getByLabel('Реакции участников').getByText('❤️', { exact: true }).waitFor(), guest.getByLabel('Реакции участников').getByText('❤️', { exact: true }).waitFor()]);
+	const chatHeight = await guest.getByLabel('Чат совместного просмотра').evaluate((panel) => panel.getBoundingClientRect().height);
+	assert.ok(chatHeight < 320, 'Mobile chat does not take half the screen by default');
+	await guest.getByRole('button', { name: 'Увеличить чат', exact: true }).click();
+	assert.ok(await guest.getByLabel('Чат совместного просмотра').evaluate((panel) => panel.getBoundingClientRect().height) > chatHeight);
+	await guest.getByRole('button', { name: 'Уменьшить чат', exact: true }).click();
+	await guest.getByRole('button', { name: 'Ещё реакции', exact: true }).click();
+	assert.equal(await guest.locator('.emoji-grid button').count(), 24);
+	await guest.getByRole('button', { name: 'Реакция 🍿', exact: true }).click();
+	await Promise.all([host.getByLabel('Реакции участников').getByText('🍿', { exact: true }).waitFor(), guest.getByLabel('Реакции участников').getByText('🍿', { exact: true }).waitFor()]);
+	await guest.getByRole('button', { name: 'Открыть стикеры и GIF', exact: true }).click();
+	await guest.getByRole('button', { name: 'Стикеры', exact: true }).click();
+	await guest.getByRole('button', { name: 'Стикер Поцелуй', exact: true }).click();
+	await Promise.all([host.getByLabel('Реакции участников').getByAltText('Поцелуй').waitFor(), guest.getByLabel('Реакции участников').getByAltText('Поцелуй').waitFor()]);
+	const gif = { url: 'https://upload.wikimedia.org/wikipedia/commons/8/81/Cat_funny_gif.gif', title: 'Тестовый кот', author: 'Amrutha Unni', license: 'CC BY-SA 4.0' };
+	await guest.route('**/api/party/gifs?*', (route) => route.fulfill({ json: { provider: 'Wikimedia Commons', results: [gif] } }));
+	await guest.getByRole('button', { name: 'Открыть стикеры и GIF', exact: true }).click();
+	await guest.getByRole('button', { name: 'GIF', exact: true }).click();
+	await guest.getByLabel('Поиск GIF').fill('Коты');
+	await guest.getByRole('button', { name: 'Отправить GIF Тестовый кот', exact: true }).click();
+	await Promise.all([host.getByRole('log').getByAltText('Тестовый кот').waitFor(), guest.getByRole('log').getByAltText('Тестовый кот').waitFor()]);
+	assert.ok((await host.getByRole('log').getByRole('link', { name: 'Тестовый кот ↗' }).getAttribute('href')).startsWith('https://commons.wikimedia.org/wiki/File:'));
+	console.log(JSON.stringify({ phase: 'smaller-chat-24-reactions-stickers-gif-both-viewers', fixture: true }));
 	await guest.screenshot({ path: join(tmpdir(), 'kihema-rutube-chat.png') });
 	await guest.evaluate(() => { window.__testViewportHeight = 400; visualViewport.dispatchEvent(new Event('resize')); });
 	await guest.waitForTimeout(200);

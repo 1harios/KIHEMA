@@ -136,7 +136,7 @@ try {
 		const input = document.querySelector('[aria-label="Сообщение в чат"]').getBoundingClientRect();
 		return { panelHeight: panel.height, chatHeight: feed.height, inputBottom: input.bottom, viewportHeight: visualViewport.height };
 	});
-	assert.ok((await layout()).chatHeight > 300, 'mobile chat has enough space');
+	assert.ok((await layout()).panelHeight < 320 && (await layout()).chatHeight > 60, 'mobile chat is compact and keeps messages visible');
 	await guest.getByLabel('Сообщение в чат').fill('Сообщение с телефона');
 	await guest.getByRole('button', { name: 'Отправить', exact: true }).click();
 	await host.getByRole('log').getByText('Сообщение с телефона').waitFor();

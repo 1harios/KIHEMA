@@ -6,6 +6,7 @@
 	 */
 
 	import { goto } from '$app/navigation';
+	import { tick } from 'svelte';
 	import {
 		party,
 		isHost,
@@ -25,6 +26,7 @@
 	import { rutubeIdFrom, rutubeWatchHref } from '$lib/rutube';
 	import type { CatalogItem } from '$lib/types';
 	import Icon from '../ui/Icon.svelte';
+	import PartyMediaPicker from './PartyMediaPicker.svelte';
 
 	interface Props {
 		onClose: () => void;
@@ -38,8 +40,10 @@
 	let copied = $state(false);
 	let inviteError = $state('');
 	let infoOpen = $state(false);
+	let mediaOpen = $state(false);
+	let expanded = $state(false);
 
-	const REACTIONS = ['❤️', '😂', '👍', '😮'];
+	const REACTIONS = ['❤️', '😂', '👍'];
 
 	$effect(() => {
 		party.chatOpen = true;
@@ -52,7 +56,7 @@
 	// Новые сообщения прижимают ленту к низу.
 	$effect(() => {
 		party.chatLog.length;
-		if (feed) feed.scrollTop = feed.scrollHeight;
+		if (feed) void tick().then(() => { if (feed) feed.scrollTop = feed.scrollHeight; });
 	});
 
 	function submit() {
@@ -145,7 +149,7 @@
 	}
 </script>
 
-<section class="party-panel party-panel-in flex min-h-0 shrink-0 flex-col border-l border-white/12 bg-canvas/97 text-white backdrop-blur-xl"
+<section class="party-panel party-panel-in flex min-h-0 shrink-0 flex-col border-l border-white/12 bg-canvas/97 text-white backdrop-blur-xl" class:expanded class:media-open={mediaOpen}
 	aria-label="Чат совместного просмотра">
 	<!-- Invitations and participants are behind one disclosure, not above the chat. -->
 	<div class="flex shrink-0 items-center gap-1 border-b border-white/10 px-2">
@@ -157,6 +161,7 @@
 		</button>
 		<button type="button" onclick={() => void shareInvite()} aria-label="Пригласить друзей"
 			class="h-11 rounded-full px-3 text-xs text-accent">{copied ? 'Скопировано' : 'Пригласить'}</button>
+		<button type="button" class="expand-chat grid h-11 w-9 shrink-0 place-items-center text-white/60" aria-label={expanded ? 'Уменьшить чат' : 'Увеличить чат'} aria-expanded={expanded} onclick={() => (expanded = !expanded)}><Icon name={expanded ? 'chevronDown' : 'chevronUp'} size={17} /></button>
 		<button type="button" onclick={onClose} aria-label="Закрыть панель"
 			class="grid h-11 w-11 shrink-0 place-items-center rounded-full text-white/60 hover:bg-white/10">
 			<Icon name="close" size={18} />
@@ -258,6 +263,7 @@
 			</button>
 		{/each}
 		<!-- Кнопка имеет смысл, только когда в комнате хотя бы двое. -->
+		<button type="button" aria-label="Ещё реакции" aria-expanded={mediaOpen} onclick={() => { mediaOpen = !mediaOpen; infoOpen = false; }} class="grid h-10 w-10 place-items-center rounded-full text-white/60 hover:bg-white/12"><Icon name="smile" size={20} /></button>
 		{#if !compact && isHost() && party.peers.length >= 2}
 			<button
 				type="button"
@@ -279,6 +285,7 @@
 	{/if}
 
 	<!-- Чат -->
+	{#if mediaOpen}<PartyMediaPicker onClose={() => (mediaOpen = false)} />{:else}
 	<div bind:this={feed} role="log" aria-label="Сообщения комнаты" aria-live="polite"
 		class="min-h-0 flex-1 select-text overflow-y-auto overscroll-contain px-3 py-3">
 		{#if !party.chatLog.length}
@@ -290,15 +297,18 @@
 					{#if !m.self}<span class="font-semibold text-white/60">{m.name}</span> · {/if}
 					{formatTime(m.ts)}
 				</p>
-				<p
+				{#if m.gif}
+					<figure class="chat-gif mt-1 inline-block rounded-xl bg-white/8 p-1.5 text-left"><img src={m.gif.url} alt={m.gif.title} loading="lazy" referrerpolicy="no-referrer" /><figcaption><a href={m.gif.source} target="_blank" rel="noopener noreferrer">{m.gif.title} ↗</a><span>{m.gif.author} · {m.gif.license}</span></figcaption></figure>
+				{:else}<p
 					class="mt-0.5 inline-block max-w-full break-words rounded-lg px-2.5 py-1.5 text-[13px]
 					       leading-snug {m.self ? 'bg-accent/20 text-white' : 'bg-white/8 text-white/90'}"
 				>
 					{m.text}
-				</p>
+				</p>{/if}
 			</div>
 		{/each}
 	</div>
+	{/if}
 
 	<!-- Ввод -->
 	<form
@@ -308,6 +318,7 @@
 			submit();
 		}}
 	>
+		<button type="button" class="grid h-11 w-10 shrink-0 place-items-center rounded-full text-white/65 hover:bg-white/10" aria-label="Открыть стикеры и GIF" aria-expanded={mediaOpen} onclick={() => { mediaOpen = !mediaOpen; infoOpen = false; }}><Icon name="smile" size={21} /></button>
 		<input
 			bind:value={draft}
 			maxlength="300"
@@ -332,13 +343,23 @@
 
 <style>
 	.party-panel { width: 340px; max-width: 46%; height: 100%; }
+	.expand-chat { display: none; }
+	.chat-gif { max-width: 230px; width: 100%; }
+	.chat-gif img { width: 100%; max-height: 170px; object-fit: contain; border-radius: 8px; }
+	.chat-gif figcaption { padding: 4px 2px 1px; font-size: 10px; line-height: 1.3; overflow-wrap: anywhere; color: #a4acba; }
+	.chat-gif figcaption span { display: block; font-size: 9px; }
 	.room-details { max-height: 45%; }
 	.chat-composer { padding-bottom: max(0.625rem, env(safe-area-inset-bottom)); }
 	@media (max-width: 639px) and (orientation: portrait) {
-		.party-panel { width: 100%; max-width: none; height: auto; flex: 1 1 0; border-left: 0; border-top: 1px solid rgb(255 255 255 / 0.12); }
+		.party-panel { width: 100%; max-width: none; height: clamp(210px, 32dvh, 280px); flex: 0 0 auto; border-left: 0; border-top: 1px solid rgb(255 255 255 / 0.12); }
+		.party-panel.expanded { height: min(52dvh, 440px); }
+		.party-panel.media-open { height: min(60dvh, 460px); }
+		.expand-chat { display: grid; }
+		:global(.keyboard-open) .party-panel { flex: 1 1 0; height: auto; }
+		:global(.keyboard-open) .party-panel .chat-gif img { max-height: 100px; }
 	}
 	@media (orientation: landscape) and (max-height: 500px) {
-		.party-panel { width: 320px; padding-right: env(safe-area-inset-right); }
+		.party-panel { width: 280px; max-width: 38%; padding-right: env(safe-area-inset-right); }
 	}
 	/* Панель выезжает справа, сообщения мягко появляются. */
 	@keyframes party-panel-in {

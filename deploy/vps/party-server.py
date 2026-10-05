@@ -13,7 +13,7 @@ import random
 import re
 import secrets
 import time
-from urllib.parse import parse_qs, urlencode, urlsplit
+from urllib.parse import parse_qs, urlencode, urlsplit, unquote, quote
 
 from websockets.asyncio.server import serve
 from websockets.exceptions import ConnectionClosed
@@ -29,6 +29,38 @@ CHAT_BURST = 5          # сообщений за окно
 CHAT_WINDOW_S = 1.0
 COUNTDOWN_MS = 3000
 RECONNECT_GRACE_S = 12
+REACTIONS = {'❤️', '😂', '👍', '😮', '🔥', '👏', '😍', '😭', '🤣', '😱', '🤔', '😎', '🥳', '🙈', '💔', '👎', '🤯', '😴', '🍿', '🫶', '😘', '🤩', '🤡', '💯'}
+STICKERS = {'drink', 'snack', 'kiss', 'chopsticks', 'smile'}
+
+
+def valid_gif(value) -> dict | None:
+    if not isinstance(value, dict) or not isinstance(value.get('url'), str) or len(value['url']) > 1200:
+        return None
+    try:
+        url = urlsplit(value['url'])
+        if (url.scheme != 'https' or url.netloc != 'upload.wikimedia.org' or url.query or url.fragment
+                or not re.fullmatch(r'/wikipedia/commons/[0-9a-f]/[0-9a-f]{2}/[^/]+\.gif', url.path, re.I)):
+            return None
+        filename = unquote(url.path.rsplit('/', 1)[-1], errors='strict')
+        if re.search(r'[\x00-\x1f]', filename):
+            return None
+        def text(key, limit):
+            raw = value.get(key)
+            return re.sub(r'[\x00-\x1f]', '', raw).strip()[:limit] if isinstance(raw, str) else ''
+        return dict(url=value['url'], title=text('title', 180) or filename.replace('_', ' '),
+                    source='https://commons.wikimedia.org/wiki/File:' + quote(filename, safe=''),
+                    author=text('author', 200), license=text('license', 80))
+    except (ValueError, UnicodeError):
+        return None
+
+
+def social_allowed(peer: 'Peer') -> bool:
+    now = time.monotonic()
+    peer.chat_times = [x for x in peer.chat_times if now - x < CHAT_WINDOW_S]
+    if len(peer.chat_times) >= CHAT_BURST:
+        return False
+    peer.chat_times.append(now)
+    return True
 
 ALLOWED_ORIGIN = re.compile(
     r"^https://([\w-]+\.)*vercel\.app$"
@@ -298,17 +330,13 @@ async def handle_message(room: Room, peer: Peer, msg: dict) -> None:
         await room.broadcast(room.presence_payload('loading'))
 
     elif t == "chat":
-        text = msg.get('text')
-        if not isinstance(text, str):
+        gif = valid_gif(msg.get('gif')) if msg.get('kind') == 'gif' else None
+        if msg.get('kind') == 'gif' and not gif:
             return
-        text = text.strip()[:MAX_CHAT]
-        if not text:
+        raw = msg.get('text')
+        text = ('GIF: ' + gif['title']) if gif else raw.strip()[:MAX_CHAT] if isinstance(raw, str) else ''
+        if not text or not social_allowed(peer):
             return
-        now = time.monotonic()
-        peer.chat_times = [x for x in peer.chat_times if now - x < CHAT_WINDOW_S]
-        if len(peer.chat_times) >= CHAT_BURST:
-            return
-        peer.chat_times.append(now)
         await room.broadcast(
             {
                 "type": "chat",
@@ -317,17 +345,21 @@ async def handle_message(room: Room, peer: Peer, msg: dict) -> None:
                 "name": peer.name,
                 "text": text,
                 "ts": now_ms(),
+                **({'kind': 'gif', 'gif': gif} if gif else {}),
             }
         )
 
     elif t == "react":
         emoji = msg.get('emoji')
-        if not isinstance(emoji, str):
+        sticker = msg.get('stickerId')
+        if not isinstance(sticker, str) or sticker not in STICKERS:
+            sticker = None
+        if 'stickerId' in msg and sticker is None:
             return
-        emoji = emoji.strip()[:8]
-        if emoji:
+        if (sticker or isinstance(emoji, str) and emoji in REACTIONS) and social_allowed(peer):
             await room.broadcast(
-                {"type": "react", "id": new_peer_id(), "peerId": peer.id, "name": peer.name, "emoji": emoji}
+                {"type": "react", "id": new_peer_id(), "peerId": peer.id, "name": peer.name,
+                 "emoji": '✨' if sticker else emoji, **({'stickerId': sticker} if sticker else {})}
             )
 
     elif t == "buffering":

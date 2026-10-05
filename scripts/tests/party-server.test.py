@@ -171,6 +171,44 @@ class PartyTests(unittest.IsolatedAsyncioTestCase):
         await server.handle_message(self.room, self.guest, self.report(torrent='a' * 40, translationLabel='Русская озвучка'))
         self.assertFalse(self.room.pending_start)
 
+    async def test_personal_sticker_is_broadcast_to_both_viewers(self):
+        await server.handle_message(self.room, self.guest, dict(type='react', stickerId='kiss'))
+        for peer in (self.host, self.guest):
+            self.assertEqual(peer.ws.messages[-1]['stickerId'], 'kiss')
+            self.assertEqual(peer.ws.messages[-1]['peerId'], 'guest')
+            self.assertEqual(peer.ws.messages[-1]['emoji'], '✨')
+
+    async def test_unknown_stickers_and_non_catalog_reactions_are_rejected(self):
+        for msg in (dict(type='react', stickerId='../evil'), dict(type='react', stickerId=[]),
+                    dict(type='react', emoji='<script>'), dict(type='react', emoji=[])):
+            await server.handle_message(self.room, self.host, msg)
+        self.assertEqual(self.guest.ws.messages, [])
+
+    async def test_gif_has_safe_url_and_canonical_source_for_both(self):
+        gif = dict(url='https://upload.wikimedia.org/wikipedia/commons/a/ab/Cat_funny.gif',
+                   title='Кот', source='javascript:alert(1)', author='Artist', license='CC BY-SA 4.0')
+        await server.handle_message(self.room, self.host, dict(type='chat', kind='gif', gif=gif))
+        for peer in (self.host, self.guest):
+            self.assertEqual(peer.ws.messages[-1]['text'], 'GIF: Кот')
+            self.assertEqual(peer.ws.messages[-1]['gif']['source'], 'https://commons.wikimedia.org/wiki/File:Cat_funny.gif')
+
+    async def test_unsafe_gifs_do_not_broadcast_or_change_state(self):
+        for url in ('https://evil.test/file.gif', 'http://upload.wikimedia.org/wikipedia/commons/a/ab/Cat.gif',
+                    'https://upload.wikimedia.org.evil.test/wikipedia/commons/a/ab/Cat.gif',
+                    'https://upload.wikimedia.org:444/wikipedia/commons/a/ab/Cat.gif',
+                    'https://upload.wikimedia.org/wikipedia/commons/a/ab/Cat.gif?redirect=bad',
+                    'https://upload.wikimedia.org/wikipedia/commons/a/ab/%00.gif'):
+            await server.handle_message(self.room, self.host, dict(type='chat', kind='gif', gif=dict(url=url)))
+        self.assertEqual(self.guest.ws.messages, [])
+        self.assertTrue(self.room.state['paused'])
+
+    async def test_social_messages_share_a_bounded_burst_budget(self):
+        for i in range(12):
+            await server.handle_message(self.room, self.host, dict(type='react', emoji='😂'))
+            await server.handle_message(self.room, self.host, dict(type='chat', text='hello'))
+        self.assertEqual(len(self.guest.ws.messages), server.CHAT_BURST)
+        self.assertEqual(len(self.host.chat_times), server.CHAT_BURST)
+
     def test_invite_target_cannot_be_external(self):
         for href in ('https://example.com/movie/1/watch', '//example.com/movie/1/watch', '/login'):
             self.assertIsNone(server.watch_href(href))

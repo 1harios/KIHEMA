@@ -35,6 +35,20 @@ test('fullscreen uses the entire root and exits the matching WebKit API', async 
 	} finally { if (previous) globalThis.document = previous; else delete globalThis.document; }
 });
 
+test('fullscreen retries legacy options once but never retries a permission denial', async () => {
+	const { enterFullscreen } = load('src/lib/player/fullscreen.ts');
+	const previous = globalThis.document;
+	try {
+		globalThis.document = { fullscreenElement: null };
+		let calls = 0;
+		const root = { requestFullscreen: async (options) => { calls++; if (options) throw new TypeError('legacy options'); document.fullscreenElement = root; } };
+		assert.equal(await enterFullscreen(root), true); assert.equal(calls, 2);
+		let denied = 0;
+		assert.equal(await enterFullscreen({ requestFullscreen: async () => { denied++; throw new DOMException('denied', 'NotAllowedError'); } }), false);
+		assert.equal(denied, 1);
+	} finally { if (previous) globalThis.document = previous; else delete globalThis.document; }
+});
+
 test('subtitles off disables native captions and the HLS subtitle engine', () => {
 	const { PlayerController } = load('src/lib/player/controller.svelte.ts');
 	const player = new PlayerController();

@@ -12,6 +12,7 @@
  */
 
 import { roomCodeFrom, roomPosition, watchHref } from './party-sync';
+import { partyGif, stickerById, PARTY_REACTIONS, type PartyGif } from './party-media';
 
 export type PartyStatus = 'idle' | 'connecting' | 'in-room' | 'reconnecting' | 'error';
 
@@ -28,12 +29,33 @@ export interface ChatMessage {
 	text: string;
 	ts: number;
 	self: boolean;
+	gif?: PartyGif;
 }
 
 export interface Reaction {
 	id: string;
 	name: string;
 	emoji: string;
+	stickerId?: string;
+}
+
+// Download only the selected sticker before starting its short animation.
+// Cold mobile caches must not consume the animation while the PNG is loading.
+const stickerAssets = new Map<string, Promise<boolean>>();
+function stickerLoaded(id: string): Promise<boolean> {
+	const sticker = stickerById(id);
+	if (!sticker) return Promise.resolve(false);
+	const cached = stickerAssets.get(id);
+	if (cached) return cached;
+	const pending = new Promise<boolean>((resolve) => {
+		const image = new Image();
+		const finish = (ok: boolean) => { clearTimeout(timer); image.onload = image.onerror = null; if (!ok) stickerAssets.delete(id); resolve(ok); };
+		const timer = setTimeout(() => finish(false), 15_000);
+		image.onload = () => finish(true); image.onerror = () => finish(false);
+		image.src = sticker.src;
+	});
+	stickerAssets.set(id, pending);
+	return pending;
 }
 
 export interface PartyToast {
@@ -516,12 +538,14 @@ function handleMessage(m: Record<string, unknown>): void {
 		}
 
 		case 'chat': {
+			const gif = partyGif(m.gif);
 			const msg: ChatMessage = {
 				id: String(m.id),
 				name: String(m.name),
 				text: String(m.text),
 				ts: Number(m.ts),
-				self: String(m.peerId) === party.selfId
+				self: String(m.peerId) === party.selfId,
+				...(gif ? { gif } : {})
 			};
 			party.chatLog = [...party.chatLog.slice(-(MAX_CHAT_LOG - 1)), msg];
 			if (!party.chatOpen && !msg.self) party.unread += 1;
@@ -529,11 +553,17 @@ function handleMessage(m: Record<string, unknown>): void {
 		}
 
 		case 'react': {
-			const r: Reaction = { id: String(m.id), name: String(m.name), emoji: String(m.emoji) };
-			party.reactions = [...party.reactions, r];
-			setTimeout(() => {
-				party.reactions = party.reactions.filter((x) => x.id !== r.id);
-			}, 2200);
+			const sticker = stickerById(m.stickerId);
+			if (!sticker && !PARTY_REACTIONS.some((emoji) => emoji === m.emoji)) break;
+			const r: Reaction = { id: String(m.id), name: String(m.name), emoji: String(m.emoji), ...(sticker ? { stickerId: sticker.id } : {}) };
+			const room = party.roomCode;
+			const show = () => {
+				if (party.roomCode !== room || !inParty()) return;
+				party.reactions = [...party.reactions.slice(-19), r];
+				setTimeout(() => { party.reactions = party.reactions.filter((x) => x.id !== r.id); }, sticker ? 3400 : 2200);
+			};
+			if (sticker) void stickerLoaded(sticker.id).then((ok) => { if (ok) show(); });
+			else show();
 			break;
 		}
 
@@ -656,8 +686,17 @@ export function sendChat(text: string): void {
 }
 
 export function sendReact(emoji: string): void {
-	if (party.status !== 'in-room') return;
+	if (party.status !== 'in-room' || !PARTY_REACTIONS.some((value) => value === emoji)) return;
 	send({ type: 'react', emoji });
+}
+
+export function sendSticker(stickerId: string): void {
+	if (party.status === 'in-room' && stickerById(stickerId)) send({ type: 'react', stickerId });
+}
+
+export function sendGif(value: PartyGif): void {
+	const gif = partyGif(value);
+	if (party.status === 'in-room' && gif) send({ type: 'chat', kind: 'gif', gif });
 }
 
 export function sendBuffering(buffering: boolean): void {

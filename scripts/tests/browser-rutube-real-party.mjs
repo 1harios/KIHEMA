@@ -50,7 +50,10 @@ try {
 	const host = await viewer('host', { width: 1280, height: 800 });
 	await host.goto(`${base}/rutube/${id}/watch`, { waitUntil: 'domcontentloaded' });
 	await host.locator('iframe').waitFor();
-	await host.getByRole('button', { name: 'Воспроизвести', exact: true }).click();
+	const initialPlay = host.locator('.rutube-controls button').first();
+	await initialPlay.waitFor();
+	await host.waitForFunction(() => !document.querySelector('.rutube-controls button')?.disabled, null, { timeout: 60_000 });
+	if (await initialPlay.getAttribute('aria-label') === 'Воспроизвести') await initialPlay.click();
 	await ready(host);
 	console.log(JSON.stringify({ phase: 'real-rutube-loaded', host: await read(host), qualityList: events.findLast((e) => e.type === 'player:qualityList')?.list }));
 	await control(host, 'Смотреть вместе');
@@ -90,6 +93,15 @@ try {
 	await guest.getByLabel('Сообщение в чат').fill('Настоящее видео RUTUBE вдвоём');
 	await guest.getByRole('button', { name: 'Отправить', exact: true }).click();
 	await host.getByRole('log').getByText('Настоящее видео RUTUBE вдвоём').waitFor();
+	await guest.getByRole('button', { name: 'Открыть стикеры и GIF', exact: true }).click();
+	await guest.getByRole('button', { name: 'Стикеры', exact: true }).click();
+	await guest.getByRole('button', { name: 'Стикер Улыбка', exact: true }).click();
+	await Promise.all([host.getByLabel('Реакции участников').getByAltText('Улыбка').waitFor(), guest.getByLabel('Реакции участников').getByAltText('Улыбка').waitFor()]);
+	await guest.getByRole('button', { name: 'Открыть стикеры и GIF', exact: true }).click();
+	await guest.getByRole('button', { name: 'GIF', exact: true }).click();
+	await guest.getByRole('button', { name: /^Отправить GIF / }).first().click({ timeout: 20_000 });
+	await Promise.all([host.locator('.chat-gif img').waitFor(), guest.locator('.chat-gif img').waitFor()]);
+	await Promise.all([host.waitForFunction(() => { const img = document.querySelector('.chat-gif img'); return img?.complete && img.naturalWidth > 0; }), guest.waitForFunction(() => { const img = document.querySelector('.chat-gif img'); return img?.complete && img.naturalWidth > 0; })]);
 	assert.equal(errors.length, 0, errors.join('\n'));
 	console.log(JSON.stringify({ ok: true, realProvider: true, phase: 'pause-seek-reactions-chat', host: a, guest: b, drift: Math.abs(a.time - b.time) }));
 } catch (error) {

@@ -27,12 +27,15 @@ try {
 			});
 		});
 		await page.goto(`${base}/rutube/${id}/watch`, { waitUntil: 'domcontentloaded' });
-		await page.getByRole('button', { name: 'Воспроизвести', exact: true }).click({ timeout: 30_000 });
+		const playButton = page.locator('.rutube-controls button').first();
+		await playButton.waitFor();
+		await page.waitForFunction(() => !document.querySelector('.rutube-controls button')?.disabled, null, { timeout: 60_000 });
+		if (await playButton.getAttribute('aria-label') === 'Воспроизвести') await playButton.click();
 		const frame = page.frames().find((f) => f.url().startsWith('https://rutube.ru/play/embed/'));
 		assert.ok(frame, 'Official embed loaded');
 		assert.equal(new URL(frame.url()).searchParams.get('hideControls'), 'true');
 		await frame.waitForFunction(() => [...document.querySelectorAll('video')].some((v) => v.videoWidth > 0 && v.currentTime > .5 && !v.paused), null, { timeout: 60_000 });
-		const wake = async () => { const button = page.getByRole('button', { name: 'Показать управление', exact: true }); if (await button.count()) await button.click(); };
+		const wake = async () => { const button = page.getByRole('button', { name: 'Показать управление', exact: true }); if (await button.count()) { if (mobile) await button.tap(); else await button.click(); } };
 		await wake();
 		await page.getByRole('button', { name: 'Качество RUTUBE', exact: true }).click();
 		const panel = page.getByRole('region', { name: 'Настройки плеера RUTUBE' });
@@ -46,7 +49,7 @@ try {
 		await page.waitForTimeout(2000);
 		const after = await frame.evaluate(() => [...document.querySelectorAll('video')].find((v) => v.duration > 100)?.currentTime);
 		assert.ok(after > before, 'Real video keeps playing after quality change');
-		await frame.locator('body').hover();
+		await page.locator('.video-tap').hover();
 		assert.deepEqual(await frame.evaluate(() => [...document.querySelectorAll('[class*="controls-module__"]')].filter((el) => {
 			if (!el.getBoundingClientRect().width || !el.getBoundingClientRect().height) return false;
 			for (let node = el; node; node = node.parentElement) { const css = getComputedStyle(node); if (css.display === 'none' || css.visibility === 'hidden' || Number(css.opacity) === 0) return false; }
@@ -56,6 +59,18 @@ try {
 		await page.getByRole('button', { name: 'Качество RUTUBE', exact: true }).click();
 		await panel.getByRole('button', { name: /^Авто/ }).click();
 		await page.waitForFunction(() => window.__qualities.at(-1)?.isAutoQuality === true, null, { timeout: 30_000 });
+		await wake();
+		await page.getByRole('button', { name: 'Громкость', exact: true }).click();
+		await page.getByLabel('Громкость RUTUBE').fill('0.5');
+		assert.equal(await panel.count(), 0, 'Volume is not inside quality settings');
+		await page.keyboard.press('Escape');
+		if (!mobile) {
+			await wake();
+			await page.getByRole('button', { name: 'Полный экран', exact: true }).click();
+			assert.ok(await page.evaluate(() => document.fullscreenElement === document.querySelector('.rutube-room')), 'Real fullscreen contains the whole room');
+			await wake();
+			await page.getByRole('button', { name: 'Выйти из полного экрана', exact: true }).click();
+		}
 		if (mobile) {
 			await page.setViewportSize({ width: 320, height: 568 });
 			await wake();

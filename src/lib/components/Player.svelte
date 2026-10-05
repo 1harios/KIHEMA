@@ -58,7 +58,7 @@
 	import PartyPanel from './party/PartyPanel.svelte';
 	import PartySetup from './party/PartySetup.svelte';
 	import PartyReactions from './party/PartyReactions.svelte';
-	import { enterFullscreen, exitFullscreen, fullscreenElement } from '$lib/player/fullscreen';
+	import { enterFullscreen, exitFullscreen, fullscreenElement, fullscreenHint } from '$lib/player/fullscreen';
 	import { sendSourceChange } from '$lib/party.svelte';
 
 	interface Props {
@@ -266,7 +266,7 @@
 		if (!shell) return;
 		if (pageFullscreen) pageFullscreen = false;
 		else if (fullscreenElement()) await exitFullscreen().catch(() => {});
-		else pageFullscreen = !(await enterFullscreen(shell));
+		else { pageFullscreen = !(await enterFullscreen(shell)); if (pageFullscreen) { const hint = fullscreenHint(); if (hint) pushToast(hint); } }
 		wake();
 	}
 
@@ -975,41 +975,18 @@
 
 <!--
 	Кнопка перемотки. Число внутри иконки, а не в подписи: пользователь жаловался,
-	что по круговой стрелке непонятно, на сколько мотает. Общий набор иконок
-	рисует только пути, поэтому цифра тут инлайном.
+	что по круговой стрелке непонятно, на сколько мотает. Цифра теперь есть
+	в общем наборе иконок для обоих плееров.
 -->
 {#snippet seekButton(delta: number)}
 	<button
 		type="button"
 		onclick={() => skip(delta)}
-		class="pctl"
+		class="pctl player-skip"
 		aria-label={delta < 0 ? 'Назад на 10 секунд' : 'Вперёд на 10 секунд'}
 		title={delta < 0 ? 'Назад на 10 секунд' : 'Вперёд на 10 секунд'}
 	>
-		<svg viewBox="0 0 24 24" width="22" height="22" aria-hidden="true" fill="none">
-			<g
-				stroke="currentColor"
-				stroke-width="1.6"
-				stroke-linecap="round"
-				stroke-linejoin="round"
-				transform={delta < 0 ? '' : 'scale(-1 1) translate(-24 0)'}
-			>
-				<!-- Незамкнутая дуга со стрелкой: направление читается сразу. -->
-				<path d="M4.2 11.5a8 8 0 1 1 2.6 6.6" />
-				<path d="M3.6 6.4v5.2h5.2" />
-			</g>
-			<text
-				x="12"
-				y="15.4"
-				text-anchor="middle"
-				font-size="8.5"
-				font-weight="700"
-				fill="currentColor"
-				font-family="Inter Tight, system-ui, sans-serif"
-			>
-				10
-			</text>
-		</svg>
+		<Icon name={delta < 0 ? 'rewind' : 'forward'} size={22} />
 	</button>
 {/snippet}
 
@@ -1423,17 +1400,17 @@
 			{/if}
 
 			<!-- Громкость: ползунок раскрывается по наведению, чтобы не занимать место -->
-			<div class="player-volume group/vol hidden items-center sm:flex">
+			<div class="player-volume group/vol relative flex items-center">
 				<button
 					type="button"
 					onclick={() => player.toggleMute()}
 					class="pctl"
 					aria-label={player.muted ? 'Включить звук' : 'Выключить звук'}
 				>
-					<Icon name="volume" size={19} />
+					<Icon name={player.muted ? 'volumeOff' : 'volume'} size={19} />
 				</button>
 				<div
-					class="w-0 overflow-hidden transition-all duration-[var(--t-mid)] group-hover/vol:w-24
+					class="volume-slider w-0 overflow-hidden transition-all duration-[var(--t-mid)] group-hover/vol:w-24
 					       group-focus-within/vol:w-24"
 				>
 					<input
@@ -1749,7 +1726,10 @@
 	.player-video { container-type: size; }
 	@container (max-width: 480px) {
 		.player-controls .pctl { width: 40px; height: 44px; }
-		.player-controls .pip-control, .player-volume { display: none; }
+		.player-controls .pip-control { display: none; }
+		.player-volume .volume-slider { position: absolute; bottom: 48px; left: 0; border-radius: 12px; background: #111318f5; }
+		.player-volume:focus-within .volume-slider, .player-volume:hover .volume-slider { width: 120px; padding: 10px; }
+		.player-volume .volume-slider input { margin-left: 0; }
 		.player-time { margin-left: 0; font-size: 11px; }
 		.player-time > span { display: none; }
 		.player-controls { padding-left: 10px; padding-right: 10px; padding-bottom: max(6px, env(safe-area-inset-bottom)); }
@@ -1759,6 +1739,7 @@
 	@container (max-height: 150px) {
 		.player-heading { display: none; }
 	}
+	@container (max-width: 359px) { .player-skip { display: none; } }
 	.player-shell { position: relative; }
 	.player-shell.page-fullscreen {
 		position: fixed; inset: 0; top: var(--viewport-top); z-index: 100;
@@ -1767,12 +1748,13 @@
 	@media (max-width: 639px) and (orientation: portrait) {
 		.player-shell { height: var(--viewport-height); }
 		.player-shell.chat-open { flex-direction: column; }
-		.player-shell.chat-open > :first-child { flex: 0 0 min(32dvh, 240px); min-height: 130px; }
-		.player-shell.chat-open.keyboard-open > :first-child { flex-basis: 96px; min-height: 96px; }
+		.player-shell.chat-open > :first-child { flex: 1 1 0; min-height: 130px; }
+		.player-shell.chat-open.keyboard-open > :first-child { flex: 0 0 96px; min-height: 96px; }
 	}
 	@media (max-height: 500px) and (orientation: landscape) {
 		.player-shell { height: var(--viewport-height); }
 	}
+	.player-shell:fullscreen:not(.keyboard-open), .player-shell:-webkit-full-screen:not(.keyboard-open) { height: 100dvh; top: 0; }
 	/*
 	  Локальные классы, а не утилиты: эти три набора повторяются в разметке по
 	  десять раз каждый, и в атрибутах они превращали строки классов в кашу.

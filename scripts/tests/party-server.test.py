@@ -184,6 +184,41 @@ class PartyTests(unittest.IsolatedAsyncioTestCase):
                        'https://kihema.vercel.app\n'):
             self.assertIsNone(server.ALLOWED_ORIGIN.fullmatch(origin))
 
+    def test_rutube_target_is_internal_and_strips_private_query(self):
+        href = '/rutube/' + 'a' * 32 + '/watch'
+        self.assertEqual(server.watch_href(href + '?room=ABCDEF&t=42&secret=bad'), href)
+        self.assertIsNone(server.watch_href('/rutube/invalid/watch'))
+
+    async def test_rutube_ad_waits_for_guest_without_advancing_content_clock(self):
+        self.room.state.update(targetHref='/rutube/' + 'a' * 32 + '/watch', paused=False, positionSec=20)
+        self.host.ready = self.guest.ready = True
+        await server.handle_message(self.room, self.guest, self.report(ready=False, buffering=True, blocking=True))
+        self.assertTrue(self.room.state['paused'])
+        self.assertTrue(self.room.pending_start)
+        self.assertTrue(self.room.state['waitingForReady'])
+        await server.handle_message(self.room, self.guest, self.report(positionSec=20))
+        self.assertFalse(self.room.pending_start)
+        self.assertFalse(self.room.state['paused'])
+        self.assertGreater(self.room.state['anchorTs'], server.now_ms() + 2500)
+
+    async def test_native_media_guest_report_cannot_enable_external_ad_barrier(self):
+        self.room.state['paused'] = False
+        await server.handle_message(self.room, self.guest, self.report(ready=False, blocking=True))
+        self.assertFalse(self.room.state['paused'])
+
+    async def test_rutube_blocking_cannot_claim_ready_or_skip_wait(self):
+        self.room.state.update(targetHref='/rutube/' + 'a' * 32 + '/watch', paused=False)
+        self.host.ready = self.guest.ready = True
+        await server.handle_message(self.room, self.guest, self.report(ready=True, blocking=True))
+        self.assertFalse(self.guest.ready)
+        self.assertTrue(self.room.pending_start)
+        self.assertTrue(self.room.state['paused'])
+
+    async def test_rutube_switch_resets_native_playback_rate(self):
+        self.room.state['rate'] = 1.5
+        await server.handle_message(self.room, self.host, {'type': 'goto', 'targetHref': '/rutube/' + 'a' * 32 + '/watch'})
+        self.assertEqual(self.room.state['rate'], 1)
+
 
 if __name__ == '__main__':
     unittest.main()

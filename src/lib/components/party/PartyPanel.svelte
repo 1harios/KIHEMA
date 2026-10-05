@@ -22,6 +22,7 @@
 		sharedPosition
 	} from '$lib/party.svelte';
 	import { toMediaSlug } from '$lib/slug';
+	import { rutubeIdFrom, rutubeWatchHref } from '$lib/rutube';
 	import type { CatalogItem } from '$lib/types';
 	import Icon from '../ui/Icon.svelte';
 
@@ -88,6 +89,18 @@
 	let query = $state('');
 	let results = $state<CatalogItem[]>([]);
 	let searching = $state(false);
+	let rutubeOpen = $state(false);
+	let rutubeLink = $state('');
+	let rutubeError = $state('');
+	function pickRutube() {
+		const id = rutubeIdFrom(rutubeLink);
+		if (!id) { rutubeError = 'Нужна HTTPS-ссылка на видео RUTUBE'; return; }
+		const href = rutubeWatchHref(id);
+		sendGoto(href, 'Видео RUTUBE');
+		rutubeOpen = false; rutubeError = ''; rutubeLink = '';
+		onClose();
+		void goto(withPartyParams(href));
+	}
 
 	// Живой поиск с дебаунсом; устаревшие запросы отменяем.
 	$effect(() => {
@@ -199,6 +212,15 @@
 	<!-- Смена фильма (только хост) -->
 	{#if isHost()}
 		<div class="mt-3 border-t border-white/10 pt-2">
+			<button type="button" onclick={() => (rutubeOpen = !rutubeOpen)} aria-expanded={rutubeOpen}
+				class="flex h-10 w-full items-center gap-2 text-xs font-semibold text-white/70"><Icon name="play" size={14} /> Видео RUTUBE</button>
+			{#if rutubeOpen}
+				<form class="mb-2 space-y-2" onsubmit={(event) => { event.preventDefault(); pickRutube(); }}>
+					<input bind:value={rutubeLink} type="url" required placeholder="https://rutube.ru/video/…/" aria-label="Ссылка RUTUBE для комнаты" class="h-11 w-full rounded-xl border border-white/15 bg-black/30 px-3 text-[16px] outline-none focus:border-accent" />
+					<button type="submit" class="h-10 w-full rounded-full bg-accent text-xs font-semibold text-accent-ink">Включить всем</button>
+					{#if rutubeError}<p role="alert" class="text-xs text-warn">{rutubeError}</p>{/if}
+				</form>
+			{/if}
 			<button type="button" onclick={() => (pickerOpen = !pickerOpen)}
 				class="flex h-10 w-full items-center gap-2 text-xs font-semibold text-white/70" aria-expanded={pickerOpen}>
 				<Icon name="film" size={14} /> Сменить фильм
@@ -224,7 +246,6 @@
 	</div>
 	{/if}
 
-	{#if !compact}
 	<div class="flex shrink-0 items-center gap-1 border-b border-white/10 px-2 py-1">
 		{#each REACTIONS as emoji (emoji)}
 			<button
@@ -237,7 +258,7 @@
 			</button>
 		{/each}
 		<!-- Кнопка имеет смысл, только когда в комнате хотя бы двое. -->
-		{#if isHost() && party.peers.length >= 2}
+		{#if !compact && isHost() && party.peers.length >= 2}
 			<button
 				type="button"
 				onclick={() => startCountdown()}
@@ -250,7 +271,6 @@
 			</button>
 		{/if}
 	</div>
-	{/if}
 	{#if party.roomState?.waitingForReady}
 		<div class="shrink-0 border-b border-white/10 px-3 py-2 text-xs text-white/60" role="status">
 			Готовы {party.peers.filter((p) => p.ready).length} из {party.peers.length}. Ждём загрузку у всех.

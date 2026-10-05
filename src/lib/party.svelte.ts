@@ -408,7 +408,7 @@ function acceptState(raw: Partial<RoomState>, by: string): void {
 	};
 	if ((raw.changeId ?? 0) > previousChange && party.status === 'in-room' && by !== party.selfId) {
 		const detail = raw.changeLabel ? `: ${raw.changeLabel}` : '';
-		pushToast(raw.changeKind === 'movie' ? `Ведущий сменил фильм${detail}`
+		pushToast(raw.changeKind === 'movie' ? `Ведущий сменил ${raw.targetHref?.startsWith('/rutube/') ? 'видео' : 'фильм'}${detail}`
 			: raw.changeKind === 'translation' ? `Ведущий меняет озвучку${detail}` : 'Ведущий меняет раздачу');
 	}
 	party.stateBy = by;
@@ -628,6 +628,8 @@ export function sendRate(rate: number, positionSec: number): void {
 export function reportPlayback(report: {
 	targetHref: string; ready: boolean; buffering: boolean; positionSec: number;
 	torrent: string | null; translationLabel: string | null;
+	/** External player advertising / browser permission blocks a common start. */
+	blocking?: boolean;
 }): void {
 	if (party.status === 'in-room') send({ type: 'report', ...report });
 }

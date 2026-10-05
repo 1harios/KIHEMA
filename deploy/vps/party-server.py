@@ -50,8 +50,11 @@ def watch_href(value) -> str | None:
     if not isinstance(value, str) or not value.startswith('/') or value.startswith('//') or len(value) > MAX_TARGET:
         return None
     url = urlsplit(value)
-    if not re.fullmatch(r'/(movie|show)/[^/]+/watch', url.path):
+    external = re.fullmatch(r'/rutube/[a-f0-9]{32}/watch', url.path)
+    if not re.fullmatch(r'/(movie|show)/[^/]+/watch', url.path) and not external:
         return None
+    if external:
+        return url.path
     query = parse_qs(url.query)
     params = {key: query[key][0] for key in sorted(('season', 'episode', 's', 'e')) if key in query and query[key][0].isdigit()}
     return url.path + ('?' + urlencode(params) if params else '')
@@ -222,6 +225,8 @@ async def handle_message(room: Room, peer: Peer, msg: dict) -> None:
             return
         st = room.state
         st["targetHref"] = href
+        if href.startswith('/rutube/'):
+            st['rate'] = 1.0  # The public RUTUBE API has no playback-rate command.
         st["positionSec"] = 0.0
         st["paused"] = True
         st["anchorTs"] = now_ms()
@@ -335,11 +340,19 @@ async def handle_message(room: Room, peer: Peer, msg: dict) -> None:
             return
         source_matches = not st['torrent'] or msg.get('torrent') == st['torrent']
         label_matches = not st['translationLabel'] or msg.get('translationLabel') == st['translationLabel']
-        ready = msg.get('ready') is True and source_matches and label_matches and not st['sourcePending']
+        blocking = st['targetHref'].startswith('/rutube/') and msg.get('blocking') is True
+        ready = msg.get('ready') is True and source_matches and label_matches and not st['sourcePending'] and not blocking
         changed = ready != peer.ready or bool(msg.get('buffering')) != peer.buffering
         peer.ready = ready
         peer.buffering = bool(msg.get('buffering'))
         pos = msg.get('positionSec')
+        # Ads/permission prompts belong to RUTUBE, not the shared content clock.
+        # Wait for every viewer without skipping or trying to pause their ads.
+        if blocking and not st['paused']:
+            reanchor(room)
+            st.update(paused=True, waitingForReady=True, buffering=False)
+            room.pending_start = True
+            await room.broadcast(room.state_payload('server'))
         # Only the host's actual media clock anchors playback, not a guest's lag.
         # Never let a heartbeat turn a scheduled countdown into an immediate start.
         if is_host and not st['waitingForReady'] and now_ms() >= st['anchorTs'] and valid_position(pos):
@@ -408,7 +421,7 @@ async def handler(ws) -> None:
                 st["targetHref"] = href
             else:
                 del ROOMS[code]
-                await send(ws, {'type': 'error', 'code': 'bad_target', 'message': 'Откройте фильм, чтобы создать комнату'})
+                await send(ws, {'type': 'error', 'code': 'bad_target', 'message': 'Откройте видео, чтобы создать комнату'})
                 return
             pos = hello.get("positionSec")
             if valid_position(pos):

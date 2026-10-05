@@ -43,6 +43,13 @@
 		<div class="pt-9 md:pt-11">
 			<ContinueRow />
 		</div>
+		<div class="mt-5 px-[var(--gutter)]">
+			<a href="/rutube" class="flex items-center gap-3 rounded-xl border border-line-soft bg-white/[0.02] px-4 py-3 transition hover:border-line-strong">
+				<Icon name="users" size={20} class="shrink-0 text-accent" />
+				<span class="min-w-0 flex-1"><span class="block text-sm font-semibold">RUTUBE вместе</span><span class="block text-xs text-white/50">Ваше видео, общая пауза и чат</span></span>
+				<Icon name="chevronRight" size={16} class="shrink-0 text-white/50" />
+			</a>
+		</div>
 
 		<!-- Вход в подбор. Стоит выше рядов намеренно: человек, который не знает,
 		     что смотреть, не должен сначала прокрутить девять подборок. -->

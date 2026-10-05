@@ -57,6 +57,7 @@
 	import Icon from './ui/Icon.svelte';
 	import PartyPanel from './party/PartyPanel.svelte';
 	import PartySetup from './party/PartySetup.svelte';
+	import PartyReactions from './party/PartyReactions.svelte';
 	import { enterFullscreen, exitFullscreen, fullscreenElement } from '$lib/player/fullscreen';
 	import { sendSourceChange } from '$lib/party.svelte';
 
@@ -310,16 +311,15 @@
 		controlsVisible = true;
 		if (hideTimer) clearTimeout(hideTimer);
 		// Пока открыты настройки или стоит пауза — панель не прячем.
-		if (settingsOpen || player.paused) return;
+		if (settingsOpen || partySetupOpen || player.paused) return;
 		hideTimer = setTimeout(() => (controlsVisible = false), 3200);
 	}
 
 	$effect(() => {
-		// Пауза всегда возвращает панель.
-		if (player.paused) {
-			controlsVisible = true;
-			if (hideTimer) clearTimeout(hideTimer);
-		}
+		// Schedule hiding on playback start too, even if the mouse never moved.
+		player.paused; settingsOpen; partySetupOpen;
+		untrack(wake);
+		return () => { if (hideTimer) clearTimeout(hideTimer); };
 	});
 
 	/* ------------------------------- клавиатура ----------------------------- */
@@ -872,13 +872,6 @@
 		return () => clearInterval(id);
 	});
 
-	/** Горизонтальная позиция всплывающей реакции — детерминированно по id автора. */
-	function reactLeft(id: string): number {
-		let h = 0;
-		for (const ch of id) h = (h * 31 + ch.charCodeAt(0)) % 1000;
-		return 15 + (h % 60);
-	}
-
 	$effect(() => {
 		if (party.status === 'idle') partyPanelOpen = false;
 	});
@@ -1272,7 +1265,7 @@
 		       to-transparent px-[var(--gutter)] pb-16 pt-4 transition-opacity duration-[var(--t-mid)]"
 		style="opacity: {controlsVisible ? 1 : 0}"
 	>
-		<div class="pointer-events-auto flex items-start gap-3">
+		<div class="flex items-start gap-3" style:pointer-events={controlsVisible ? 'auto' : 'none'} inert={!controlsVisible}>
 			<a
 				href={backHref}
 				class="grid h-10 w-10 shrink-0 place-items-center rounded-full border border-white/15
@@ -1319,6 +1312,7 @@
 		class="player-controls absolute inset-x-0 bottom-0 z-20 bg-gradient-to-t from-black/92 via-black/55
 		       to-transparent px-[var(--gutter)] pb-4 pt-20 transition-opacity duration-[var(--t-mid)]"
 		style="opacity: {controlsVisible ? 1 : 0}; pointer-events: {controlsVisible ? 'auto' : 'none'}"
+		inert={!controlsVisible}
 	>
 		<!-- ------------------------------ таймлайн ------------------------------ -->
 		<div class="group/bar relative mb-2">
@@ -1679,19 +1673,7 @@
 	<!-- ======================= оверлеи совместного просмотра ======================= -->
 
 	<!-- Всплывающие реакции: поднимаются снизу вверх и гаснут. -->
-	{#if party.reactions.length}
-		<div class="pointer-events-none absolute inset-0 z-20 overflow-hidden">
-			{#each party.reactions as r (r.id)}
-				<div
-					class="party-float absolute bottom-36 flex flex-col items-center"
-					style="left: {reactLeft(r.id)}%"
-				>
-					<span class="text-3xl drop-shadow-lg">{r.emoji}</span>
-					<span class="mt-0.5 max-w-24 truncate text-[10px] text-white/70">{r.name}</span>
-				</div>
-			{/each}
-		</div>
-	{/if}
+	<PartyReactions />
 
 	<!-- Тосты комнаты: снизу слева, исчезают сами. -->
 	{#if party.toasts.length}
@@ -1930,29 +1912,6 @@
 		100% {
 			transform: translateX(300%);
 		}
-	}
-
-	/* Реакции комнаты: всплывают и гаснут, как в стриминговых чатах. */
-	@keyframes party-float {
-		0% {
-			opacity: 0;
-			transform: translateY(12px) scale(0.7);
-		}
-		12% {
-			opacity: 1;
-			transform: translateY(0) scale(1);
-		}
-		75% {
-			opacity: 1;
-		}
-		100% {
-			opacity: 0;
-			transform: translateY(-56px) scale(1.05);
-		}
-	}
-
-	.party-float {
-		animation: party-float 1.9s ease-out forwards;
 	}
 
 	/* Сообщение чата поверх видео: появляется и растворяется. */

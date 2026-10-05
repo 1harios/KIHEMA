@@ -20,7 +20,7 @@
 			if (inParty() && party.roomCode !== code) leave();
 			if (!inParty()) await join(code, name.trim() || 'Гость', null);
 			const href = watchHref(party.roomState?.targetHref ?? '');
-			if (!href) { leave(); throw new Error('В комнате пока не выбран фильм'); }
+			if (!href) { leave(); throw new Error('В комнате пока не выбрано видео'); }
 			await goto(withPartyParams(href));
 		} catch (e) {
 			error = e instanceof Error ? e.message : 'Не удалось войти в комнату';
@@ -37,7 +37,7 @@
 	<div class="w-full rounded-3xl border border-white/10 bg-white/[0.025] p-6 sm:p-9">
 		<div class="mb-6 flex items-center gap-3 text-accent"><Icon name="users" size={28} /><span class="text-xs font-semibold uppercase tracking-widest">Смотрим вместе</span></div>
 		<h1 class="font-display text-2xl font-bold text-white sm:text-3xl">Вас пригласили в кинозал</h1>
-		<p class="mt-3 text-sm leading-relaxed text-white/55">Один фильм, общий старт, синхронная пауза и перемотка. После входа откроется текущий фильм комнаты.</p>
+		<p class="mt-3 text-sm leading-relaxed text-white/55">Одно видео, общий старт, синхронная пауза и перемотка. После входа откроется текущий фильм или ролик комнаты.</p>
 		{#if code}
 			<p class="mt-5 text-sm text-white/45">Комната <span class="ml-2 font-semibold tracking-widest text-white">{code}</span></p>
 			<form class="mt-6" onsubmit={(event) => { event.preventDefault(); void enter(); }}>

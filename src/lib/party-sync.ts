@@ -16,9 +16,9 @@ export function watchHref(input: string): string | null {
 	if (!input.startsWith('/') || input.startsWith('//')) return null;
 	try {
 		const url = new URL(input, 'https://kihema.vercel.app');
-		if (!/^\/(movie|show)\/[^/]+\/watch$/.test(url.pathname)) return null;
+		if (!/^\/(movie|show)\/[^/]+\/watch$/.test(url.pathname) && !/^\/rutube\/[a-f0-9]{32}\/watch$/.test(url.pathname)) return null;
 		const params = new URLSearchParams();
-		for (const key of ['season', 'episode', 's', 'e']) {
+		for (const key of url.pathname.startsWith('/rutube/') ? [] : ['season', 'episode', 's', 'e']) {
 			const value = url.searchParams.get(key);
 			if (value && /^\d+$/.test(value)) params.set(key, value);
 		}

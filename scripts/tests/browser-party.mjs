@@ -122,6 +122,9 @@ try {
 	await playing(guest);
 	await guest.waitForTimeout(3000);
 	await aligned(host, guest, 'invite-and-join');
+	await host.mouse.move(1, 799);
+	await host.waitForTimeout(3600);
+	assert.ok(await host.locator('.player-heading').evaluate((heading) => Number(getComputedStyle(heading).opacity) < 0.01), 'movie title and navigation auto-hide without another mouse movement');
 	await control(guest, 'Полный экран');
 	assert.ok(await guest.locator('.player-shell.page-fullscreen').count(), 'mobile fallback enters fullscreen');
 	await control(guest, 'Смотреть вместе');
@@ -137,6 +140,8 @@ try {
 	await guest.getByLabel('Сообщение в чат').fill('Сообщение с телефона');
 	await guest.getByRole('button', { name: 'Отправить', exact: true }).click();
 	await host.getByRole('log').getByText('Сообщение с телефона').waitFor();
+	await guest.getByRole('button', { name: 'Реакция 😂', exact: true }).click();
+	await Promise.all([host.getByLabel('Реакции участников').getByText('😂', { exact: true }).waitFor(), guest.getByLabel('Реакции участников').getByText('😂', { exact: true }).waitFor()]);
 	await guest.screenshot({ path: join(tmpdir(), 'kihema-party-portrait.png') });
 	await guest.evaluate(() => { window.__testViewportHeight = 400; visualViewport.dispatchEvent(new Event('resize')); });
 	await guest.waitForTimeout(300);

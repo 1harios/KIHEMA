@@ -1,6 +1,7 @@
 import assert from 'node:assert/strict';
 
 const [base = 'https://kihema.vercel.app', type = 'movie', id = '550', season = '1', episode = '1'] = process.argv.slice(2);
+const origin = new URL(base).origin;
 const target = { type, tmdbId: Number(id), ...(type === 'show' ? { season: Number(season), episode: Number(episode) } : {}) };
 const started = Date.now();
 const res = await fetch(`${base}/api/playback/resolve`, {
@@ -18,11 +19,11 @@ assert.ok(!JSON.stringify(source).includes('X-Kihema-Key'));
 
 async function playlist(url, depth = 0) {
 	assert.ok(depth < 4, 'playlist recursion');
-	const response = await fetch(url, { headers: { Origin: base }, signal: AbortSignal.timeout(30_000) });
+	const response = await fetch(url, { headers: { Origin: origin }, signal: AbortSignal.timeout(30_000) });
 	const text = await response.text();
 	console.log(JSON.stringify({ phase: 'playlist', status: response.status, cors: response.headers.get('access-control-allow-origin'), depth }));
 	assert.equal(response.status, 200, text.slice(0, 120));
-	assert.equal(response.headers.get('access-control-allow-origin'), 'https://kihema.vercel.app');
+	assert.equal(response.headers.get('access-control-allow-origin'), origin);
 	assert.ok(text.trimStart().startsWith('#EXTM3U'));
 	const lines = text.split(/\r?\n/).map((s) => s.trim());
 	const first = lines.find((line) => line && !line.startsWith('#'));
@@ -30,8 +31,9 @@ async function playlist(url, depth = 0) {
 	if (text.includes('#EXT-X-STREAM-INF')) return playlist(new URL(first, response.url), depth + 1);
 	const init = text.match(/#EXT-X-MAP:.*URI="([^"]+)"/)?.[1];
 	for (const uri of [init, first].filter(Boolean)) {
-		const segment = await fetch(new URL(uri, response.url), { headers: { Origin: base }, signal: AbortSignal.timeout(30_000) });
+		const segment = await fetch(new URL(uri, response.url), { headers: { Origin: origin }, signal: AbortSignal.timeout(30_000) });
 		assert.equal(segment.status, 200);
+		assert.equal(segment.headers.get('access-control-allow-origin'), origin);
 		const reader = segment.body.getReader();
 		let bytes = 0;
 		while (bytes < 64 * 1024) {

@@ -1,7 +1,14 @@
 video.93-123-84-128.sslip.io {
+	map {http.request.header.Origin} {allowed_origin} {
+		https://kihema.vercel.app "https://kihema.vercel.app"
+		https://kihema.93-123-84-128.sslip.io "https://kihema.93-123-84-128.sslip.io"
+		default ""
+	}
+	@allowed_origin header_regexp cors Origin ^https://(kihema\.vercel\.app|kihema\.93-123-84-128\.sslip\.io)$
 	@preflight method OPTIONS
 	handle @preflight {
-		header Access-Control-Allow-Origin "https://kihema.vercel.app"
+		header @allowed_origin Access-Control-Allow-Origin "{http.request.header.Origin}"
+		header +Vary Origin
 		header Access-Control-Allow-Methods "GET, HEAD, OPTIONS"
 		header Access-Control-Allow-Headers "Range, Content-Type"
 		header Access-Control-Max-Age "86400"
@@ -25,7 +32,10 @@ video.93-123-84-128.sslip.io {
 	@media path_regexp media ^/gst/[a-zA-Z0-9]{32,40}/(master\.m3u8|video\.m3u8|init\.mp4|seg/[^/]+|subs/[0-9]+\.m3u8|subs/[0-9]+/[^/]+\.vtt|heartbeat)$
 	handle @media {
 		reverse_proxy 127.0.0.1:8090 {
-			header_down Access-Control-Allow-Origin "https://kihema.vercel.app"
+			# Replace TorrServer's wildcard. An unknown origin gets an empty value,
+			# which browsers reject (not * and not the requesting origin).
+			header_down Access-Control-Allow-Origin "{allowed_origin}"
+			header_down +Vary Origin
 			header_down Access-Control-Expose-Headers "Content-Length, Content-Range, Accept-Ranges"
 		}
 	}
@@ -35,4 +45,17 @@ video.93-123-84-128.sslip.io {
 		reverse_proxy 127.0.0.1:8090
 	}
 	respond "Not found" 404
+}
+
+# A standalone Node copy: pages and API do not depend on Vercel.
+kihema.93-123-84-128.sslip.io {
+	# Compress pages/JSON; video remains untouched in the separate site block.
+	encode zstd gzip
+	# Exact path only: /party/ABCDEF remains the application's invite page.
+	handle /party {
+		reverse_proxy 127.0.0.1:8092
+	}
+	handle {
+		reverse_proxy 127.0.0.1:3000
+	}
 }

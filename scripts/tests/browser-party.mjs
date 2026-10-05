@@ -4,15 +4,23 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 
 const base = process.argv[2] ?? 'http://127.0.0.1:5190';
+const guestBase = process.argv[3] ?? base;
 const browser = await chromium.launch({ channel: 'chrome', headless: true, args: ['--autoplay-policy=no-user-gesture-required'] });
 const pages = [];
 const errors = [];
 const trace = [];
+const mediaRequests = [];
 async function viewer(name, viewport = { width: 1280, height: 800 }) {
 	const context = await browser.newContext({ viewport });
 	const page = await context.newPage();
 	pages.push(page);
 	page.on('pageerror', (e) => errors.push(`${name}: ${e.message}`));
+	page.on('response', (response) => {
+		if (response.url().includes('/gst/')) mediaRequests.push({ viewer: name, url: response.url(), status: response.status(), cors: response.headers()['access-control-allow-origin'] });
+	});
+	page.on('requestfailed', (request) => {
+		if (request.url().includes('/gst/')) mediaRequests.push({ viewer: name, url: request.url(), error: request.failure()?.errorText });
+	});
 	page.on('websocket', (socket) => {
 		if (!socket.url().endsWith('/party')) return;
 		socket.on('framereceived', ({ payload }) => {
@@ -100,8 +108,10 @@ try {
 	const invite = await host.getByLabel('Ссылка-приглашение').inputValue();
 	await host.getByRole('button', { name: 'Настройки комнаты', exact: true }).click();
 	assert.ok(/\/party\/[A-Z2-9]{6}$/.test(invite));
+	assert.equal(new URL(invite).origin, new URL(base).origin);
+	const guestInvite = new URL(new URL(invite).pathname, guestBase).href;
 	const guest = await viewer('guest', { width: 390, height: 844 });
-	await guest.goto(invite, { waitUntil: 'domcontentloaded' });
+	await guest.goto(guestInvite, { waitUntil: 'domcontentloaded' });
 	await guest.getByRole('button', { name: 'Присоединиться к просмотру' }).waitFor();
 	await guest.waitForFunction(() => !document.querySelector('button[type=submit]')?.disabled);
 	assert.ok(await guest.evaluate(() => document.documentElement.scrollWidth <= innerWidth + 1), 'mobile invite fits viewport');
@@ -220,10 +230,10 @@ try {
 	await host.getByRole('button', { name: 'Настройки комнаты', exact: true }).click();
 	await host.getByRole('button', { name: 'Покинуть комнату', exact: true }).click();
 	assert.deepEqual(errors, []);
-	console.log(JSON.stringify({ passed: true, invite, statesReceived: trace.length }));
+	console.log(JSON.stringify({ passed: true, invite, guestInvite, statesReceived: trace.length }));
 } catch (e) {
-	console.log(JSON.stringify({ passed: false, error: e.message, errors, recentStates: trace.slice(-8) }));
-	for (const page of pages) console.log(JSON.stringify({ url: page.url(), body: (await page.locator('body').innerText()).slice(-2000) }));
+	console.log(JSON.stringify({ passed: false, error: e.message, errors, recentStates: trace.slice(-8), recentMedia: mediaRequests.slice(-12) }));
+	for (const page of pages) console.log(JSON.stringify({ url: page.url(), body: (await page.locator('body').innerText()).slice(-2000), video: await read(page).catch(() => null) }));
 	throw e;
 } finally {
 	await Promise.all(pages.map((page) => page.unrouteAll({ behavior: 'ignoreErrors' }).catch(() => {})));

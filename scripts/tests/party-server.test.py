@@ -175,6 +175,15 @@ class PartyTests(unittest.IsolatedAsyncioTestCase):
         for href in ('https://example.com/movie/1/watch', '//example.com/movie/1/watch', '/login'):
             self.assertIsNone(server.watch_href(href))
 
+    def test_mirror_origin_is_explicit_not_every_ip_domain(self):
+        for origin in ('https://kihema.vercel.app', 'https://kihema.93-123-84-128.sslip.io', 'http://127.0.0.1:5190'):
+            self.assertIsNotNone(server.ALLOWED_ORIGIN.fullmatch(origin))
+        for origin in ('https://evil.sslip.io', 'https://evil.93-123-84-128.sslip.io',
+                       'http://kihema.93-123-84-128.sslip.io',
+                       'https://kihema.93-123-84-128.sslip.io.evil.test',
+                       'https://kihema.vercel.app\n'):
+            self.assertIsNone(server.ALLOWED_ORIGIN.fullmatch(origin))
+
 
 if __name__ == '__main__':
     unittest.main()

@@ -1,0 +1,29 @@
+[Unit]
+Description=KIHEMA standalone SvelteKit website
+After=network-online.target kihema-torrserver.service kihema-party.service
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=kihema
+Group=kihema
+WorkingDirectory=/opt/kihema/web/current
+Environment=NODE_ENV=production
+Environment=HOST=127.0.0.1
+Environment=PORT=3000
+EnvironmentFile=/etc/kihema/web.env
+ExecStart=/usr/bin/node --max-old-space-size=192 build
+Restart=always
+RestartSec=3
+TimeoutStopSec=40
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectSystem=strict
+ProtectHome=true
+ReadWritePaths=/var/lib/kihema/web
+MemoryHigh=256M
+MemoryMax=384M
+LimitNOFILE=8192
+
+[Install]
+WantedBy=multi-user.target

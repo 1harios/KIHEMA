@@ -32,6 +32,7 @@ RECONNECT_GRACE_S = 12
 
 ALLOWED_ORIGIN = re.compile(
     r"^https://([\w-]+\.)*vercel\.app$"
+    r"|^https://kihema\.93-123-84-128\.sslip\.io$"
     r"|^https?://(localhost|127\.0\.0\.1)(:\d+)?$"
     r"|^null$"
 )
@@ -380,7 +381,7 @@ async def state_sync_loop(room: "Room") -> None:
 
 async def handler(ws) -> None:
     origin = (ws.request.headers.get("Origin") or "").strip()
-    if origin and not ALLOWED_ORIGIN.match(origin):
+    if origin and not ALLOWED_ORIGIN.fullmatch(origin):
         await ws.close(4403, "origin not allowed")
         return
 

@@ -15,7 +15,9 @@ export const rutubeWatchHref = (id: string) => `/rutube/${id}/watch`;
 export const rutubeVideoUrl = (id: string) => `${RUTUBE_ORIGIN}/video/${id}/`;
 export function rutubeEmbedUrl(id: string): string {
 	if (!RUTUBE_ID.test(id)) throw new Error('Invalid RUTUBE id');
-	return `${RUTUBE_ORIGIN}/play/embed/${id}/?getPlayOptions=title,thumbnail_url&skinColor=dce2eb`;
+	// The official embed supports permanent control hiding. A hideControls
+	// postMessage alone only hides the bar until the next hover/tap.
+	return `${RUTUBE_ORIGIN}/play/embed/${id}/?getPlayOptions=title,thumbnail_url&skinColor=dce2eb&hideControls=true`;
 }
 
 export function readRutubeMessage(event: Pick<MessageEvent, 'origin' | 'source' | 'data'>, frame: Window | null): { type: string; data: Record<string, unknown> } | null {
@@ -30,4 +32,23 @@ export function readRutubeMessage(event: Pick<MessageEvent, 'origin' | 'source' 
 
 export function rutubeNumber(value: unknown): number | null {
 	return typeof value === 'number' && Number.isFinite(value) && value >= 0 && value <= 604_800 ? value : null;
+}
+
+function qualityHeight(value: unknown): number | null {
+	if (typeof value === 'string' && /^\d{2,4}$/.test(value)) value = Number(value);
+	return typeof value === 'number' && Number.isInteger(value) && value > 0 && value <= 4320 ? value : null;
+}
+
+export function rutubeQualities(list: unknown): number[] {
+	if (!Array.isArray(list)) return [];
+	return [...new Set(list.map(qualityHeight).filter((level): level is number => level !== null))].sort((a, b) => b - a);
+}
+
+/** Some embed versions only report the actual height, not the auto/manual mode. */
+export function rutubeCurrentQuality(value: unknown): { height: number | null; selection: string | null } | null {
+	if (!value || typeof value !== 'object') return null;
+	const info = value as Record<string, unknown>;
+	const height = qualityHeight(info.height);
+	const manual = qualityHeight(info.quality) ?? height;
+	return { height, selection: info.isAutoQuality === true ? 'auto' : info.isAutoQuality === false && manual !== null ? String(manual) : null };
 }

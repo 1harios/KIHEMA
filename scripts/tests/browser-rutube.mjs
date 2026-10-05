@@ -17,17 +17,21 @@ const errors = [];
 const trace = [];
 const fixture = `<!doctype html><html><head><meta charset="utf-8"></head><body style="margin:0;background:#101216;color:white;display:grid;place-items:center;height:100vh;font:18px sans-serif"><span>Тест официального API RUTUBE</span><script>
 const deferTimeline=false;
-let loaded=false, time=0, paused=true, ad=false, blockPlay=false, quality='auto';
+let loaded=false, time=0, paused=true, ad=false, blockPlay=false, quality='auto', volume=1, muted=false, controlsHidden=new URL(location.href).searchParams.get('hideControls')==='true';
 const emit=(type,data={})=>parent.postMessage(JSON.stringify({type,data}),'*');
-const state=()=>({time,paused,ad,quality});
+const levels=()=>emit('player:qualityList',{list:deferTimeline?['360','720','1080']:[360,720,1080]});
+const state=()=>({time,paused,ad,quality,volume,muted,controlsHidden});
 window.__fixture={state,advertising(on){ad=on;emit(on?'player:adStart':'player:adEnd');},permission(on){blockPlay=on;},nativePause(){paused=true;emit('player:changeState',{state:'pause'});},nativeSeek(value){time=value;emit('player:currentTime',{time});}};
 addEventListener('message',event=>{let m;try{m=JSON.parse(event.data);}catch{return;}
- if(m.type==='player:play'&&!ad&&!blockPlay){if(!loaded){loaded=true;emit('player:durationChange',{duration:2669});}paused=false;emit('player:changeState',{state:'playing'});}
+ if(m.type==='player:play'&&!ad&&!blockPlay){if(!loaded){loaded=true;emit('player:durationChange',{duration:2669});levels();}paused=false;emit('player:changeState',{state:'playing'});}
  if(m.type==='player:pause'&&!ad){paused=true;emit('player:changeState',{state:'pause'});}
  if(m.type==='player:setCurrentTime'&&!ad){time=m.data.time;emit('player:currentTime',{time});}
- if(m.type==='player:changeQuality')quality=m.data.quality;
+ if(m.type==='player:changeQuality'){quality=m.data.quality;emit('player:currentQuality',{quality:{height:quality==='auto'?480:Number(quality),quality:quality==='auto'?'480':quality,isAutoQuality:quality==='auto'}});}
+ if(m.type==='player:hideControls')controlsHidden=true;
+ if(m.type==='player:setVolume'){volume=m.data.volume;emit('player:volumeChange',{volume:String(volume),muted});}
+ if(m.type==='player:mute'||m.type==='player:unMute'){muted=m.type==='player:mute';emit('player:volumeChange',{volume:String(volume),muted});}
 });
-setTimeout(()=>{emit('player:ready');if(!deferTimeline){loaded=true;emit('player:durationChange',{duration:2669});}emit('player:qualityList',{list:[360,720,1080]});emit('player:currentTime',{time});},100);
+setTimeout(()=>{emit('player:ready');if(!deferTimeline){loaded=true;emit('player:durationChange',{duration:2669});levels();}emit('player:currentTime',{time});},100);
 setInterval(()=>{if(!paused&&!ad)time+=.25;emit('player:currentTime',{time});},250);
 </script></body></html>`;
 async function viewer(name, viewport = { width: 1280, height: 800 }) {
@@ -68,6 +72,10 @@ async function control(page, label) {
 	await wakeControls(page);
 	await page.getByRole('button', { name: label, exact: true }).click();
 }
+async function chooseQuality(page, label) {
+	await control(page, 'Качество RUTUBE');
+	await page.getByRole('group', { name: 'Доступное качество видео' }).getByRole('button', { name: new RegExp(`^${label}(?: |$)`) }).click();
+}
 async function roomStarted() {
 	for (let attempt = 0; attempt < 100; attempt++) {
 		const state = trace.findLast((m) => m.viewer === 'guest');
@@ -83,6 +91,16 @@ try {
 	await host.getByRole('button', { name: 'Открыть видео', exact: true }).click();
 	await host.waitForURL(new RegExp(`/rutube/${first}/watch`));
 	await host.getByLabel('Качество RUTUBE').waitFor();
+	await chooseQuality(host, '1080p');
+	assert.equal((await read(host)).quality, '1080');
+	assert.ok((await read(host)).controlsHidden, 'One control bar, no native duplicate');
+	await control(host, 'Качество RUTUBE');
+	await host.getByLabel('Громкость RUTUBE').evaluate((input) => { input.value = '0.35'; input.dispatchEvent(new Event('input', { bubbles: true })); });
+	assert.equal((await read(host)).volume, .35);
+	await host.getByRole('button', { name: 'Выключить звук', exact: true }).click();
+	assert.ok((await read(host)).muted);
+	await host.keyboard.press('Escape');
+	await chooseQuality(host, 'Авто');
 	await host.getByRole('button', { name: 'Смотреть вместе', exact: true }).click();
 	await host.getByLabel('Ваше имя').fill('Ведущий RUTUBE');
 	await host.getByRole('button', { name: 'Создать комнату', exact: true }).click();
@@ -95,6 +113,9 @@ try {
 	await guest.getByLabel('Как вас зовут?').fill('Друг с телефона');
 	await guest.getByRole('button', { name: 'Присоединиться к просмотру' }).click();
 	await guest.waitForURL(new RegExp(`/rutube/${first}/watch\\?room=`));
+	await control(guest, 'Качество RUTUBE');
+	await guest.getByText('Уровни качества появятся после запуска видео.', { exact: false }).waitFor();
+	await guest.getByRole('button', { name: 'Закрыть настройки качества', exact: true }).click();
 	await guest.getByRole('button', { name: 'Загрузить видео', exact: true }).click();
 	await guest.getByLabel('Качество RUTUBE').waitFor();
 	await host.getByRole('button', { name: 'Воспроизвести', exact: true }).click();
@@ -106,8 +127,14 @@ try {
 	await frame(guest).waitForFunction(() => Math.abs(window.__fixture.state().time - 45) < 1);
 	await host.getByRole('button', { name: 'Воспроизвести', exact: true }).click();
 	await aligned(host, guest, 'shared-pause-and-seek');
-	await guest.getByLabel('Качество RUTUBE').selectOption('720');
+	await chooseQuality(guest, '720p');
 	assert.equal((await read(guest)).quality, '720');
+	assert.ok((await read(guest)).controlsHidden);
+	assert.equal((await read(host)).quality, 'auto', 'Quality changes only the current viewer');
+	await control(guest, 'Качество RUTUBE');
+	await guest.waitForTimeout(3600);
+	assert.ok(await guest.getByRole('region', { name: 'Настройки плеера RUTUBE' }).isVisible(), 'Quality menu does not auto-hide while being used');
+	await guest.keyboard.press('Escape');
 	await control(guest, 'Полный экран');
 	await control(guest, 'Открыть чат');
 	assert.equal(await guest.locator('.rutube-room.page-fullscreen').count(), 1);
@@ -128,6 +155,10 @@ try {
 	await guest.evaluate(() => { window.__testViewportHeight = innerHeight; visualViewport.dispatchEvent(new Event('resize')); });
 	await wakeControls(guest);
 	assert.ok(await guest.getByRole('button', { name: 'Выйти из полного экрана', exact: true }).evaluate((button) => button.getBoundingClientRect().right <= innerWidth));
+	await control(guest, 'Качество RUTUBE');
+	assert.ok(await guest.getByRole('region', { name: 'Настройки плеера RUTUBE' }).evaluate((panel) => { const r = panel.getBoundingClientRect(); return r.left >= 0 && r.right <= innerWidth && r.top >= 0 && r.bottom <= innerHeight; }), 'Quality settings fit even at 320px with chat open');
+	await guest.getByRole('button', { name: /^1080p/ }).click();
+	assert.equal((await read(guest)).quality, '1080');
 	await guest.setViewportSize({ width: 844, height: 390 });
 	await guest.evaluate(() => { window.__testViewportHeight = innerHeight; visualViewport.dispatchEvent(new Event('resize')); });
 	await guest.waitForTimeout(250);

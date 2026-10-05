@@ -4,7 +4,7 @@ import test from 'node:test';
 import ts from 'typescript';
 function load(file) {
 	const exports = {};
-	const { outputText } = ts.transpileModule(readFileSync(file, 'utf8'), { compilerOptions: { module: ts.ModuleKind.CommonJS } });
+	const { outputText } = ts.transpileModule(readFileSync(file, 'utf8'), { compilerOptions: { module: ts.ModuleKind.CommonJS, target: ts.ScriptTarget.ES2022 } });
 	new Function('exports', outputText)(exports);
 	return exports;
 }
@@ -19,8 +19,21 @@ test('foreign hosts, credentials, script schemes and malformed IDs are rejected'
 	for (const input of [`http://rutube.ru/video/${id}`, `https://rutube.ru.evil.test/video/${id}`, `https://evil.test/video/${id}`, `https://user@rutube.ru/video/${id}`, `https://rutube.ru:444/video/${id}`, `https://rutube.ru/video/${id}/other`, 'javascript:alert(1)']) assert.equal(api.rutubeIdFrom(input), null);
 });
 test('embed always uses the official fixed host and validated ID', () => {
-	assert.equal(new URL(api.rutubeEmbedUrl(id)).origin, 'https://rutube.ru');
+	const embed = new URL(api.rutubeEmbedUrl(id));
+	assert.equal(embed.origin, 'https://rutube.ru');
+	assert.equal(embed.searchParams.get('hideControls'), 'true', 'Native controls stay hidden even after hover or touch');
 	assert.throws(() => api.rutubeEmbedUrl('../evil'));
+});
+test('quality levels normalize numeric mobile payloads without inventing unavailable options', () => {
+	assert.deepEqual(api.rutubeQualities([360, '720', 1080, '720', true, null, 'auto', '1080p', 0, -1, 5000, 480.5]), [1080, 720, 360]);
+	assert.deepEqual(api.rutubeQualities(null), []);
+});
+test('actual resolution and selected quality mode stay distinct', () => {
+	assert.deepEqual(api.rutubeCurrentQuality({ height: 480, quality: '480', isAutoQuality: true }), { height: 480, selection: 'auto' });
+	assert.deepEqual(api.rutubeCurrentQuality({ height: 720, quality: '720', isAutoQuality: false }), { height: 720, selection: '720' });
+	assert.deepEqual(api.rutubeCurrentQuality({ height: '1080' }), { height: 1080, selection: null });
+	assert.equal(api.rutubeCurrentQuality(null), null);
+	assert.deepEqual(api.rutubeCurrentQuality({ height: true, quality: 'bad', isAutoQuality: false }), { height: null, selection: null });
 });
 test('postMessages require BOTH the exact origin and the correct frame window', () => {
 	const frame = {};

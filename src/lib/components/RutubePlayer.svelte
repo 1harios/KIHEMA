@@ -5,7 +5,7 @@
 	import { party, inParty, isHost, join, leave, savedName, withPartyParams, sharedPosition,
 		serverNow, sendState, sendSeek, reportPlayback, sendTranslation, pushToast, type RoomSnapshot } from '$lib/party.svelte';
 	import { watchHref } from '$lib/party-sync';
-	import { RUTUBE_ORIGIN, rutubeEmbedUrl, rutubeVideoUrl, readRutubeMessage, rutubeNumber } from '$lib/rutube';
+	import { RUTUBE_ORIGIN, rutubeEmbedUrl, rutubeVideoUrl, readRutubeMessage, rutubeNumber, rutubeQualities, rutubeCurrentQuality } from '$lib/rutube';
 	import { enterFullscreen, exitFullscreen, fullscreenElement } from '$lib/player/fullscreen';
 	import { formatTime } from '$lib/player/controller.svelte';
 	import type { RutubeMetadata } from '$lib/server/rutube';
@@ -36,6 +36,11 @@
 	let title = $state(untrack(() => video.title));
 	let qualities = $state<number[]>([]);
 	let quality = $state('auto');
+	let currentQuality = $state<number | null>(null);
+	let qualityOpen = $state(false);
+	let qualityButton: HTMLButtonElement | null = $state(null);
+	let volume = $state(1);
+	let muted = $state(false);
 	let countdown = $state(0);
 	let controlsVisible = $state(true);
 	let hideTimer: ReturnType<typeof setTimeout> | null = null;
@@ -53,20 +58,38 @@
 	function wake() {
 		controlsVisible = true;
 		if (hideTimer) clearTimeout(hideTimer);
-		if (paused || setupOpen || error || ad || needsTap || !timelineReady) return;
+		if (paused || setupOpen || qualityOpen || error || ad || needsTap || !timelineReady) return;
 		hideTimer = setTimeout(() => { controlsVisible = false; }, 3200);
 	}
 	function wakeFrom(event: Event) {
 		if (!(event.target instanceof Element && event.target.closest('.show-controls'))) wake();
 	}
 	$effect(() => {
-		paused; setupOpen; error; ad; needsTap; timelineReady;
+		paused; setupOpen; qualityOpen; error; ad; needsTap; timelineReady;
 		untrack(wake);
 		return () => { if (hideTimer) clearTimeout(hideTimer); };
 	});
 
 	function command(type: string, data: Record<string, unknown> = {}) {
 		frame?.contentWindow?.postMessage(JSON.stringify({ type, data }), RUTUBE_ORIGIN);
+	}
+	function chooseQuality(value: string) {
+		if (!apiReady || ad || !qualities.length || (value !== 'auto' && !qualities.includes(Number(value)))) return;
+		quality = value;
+		command('player:changeQuality', { quality: value });
+		qualityOpen = false;
+		qualityButton?.focus();
+	}
+	function changeVolume(value: number) {
+		volume = Math.max(0, Math.min(1, value));
+		muted = volume === 0;
+		command('player:setVolume', { volume });
+		command(muted ? 'player:mute' : 'player:unMute');
+	}
+	function toggleMute() {
+		muted = !muted;
+		if (!muted && volume === 0) changeVolume(0.5);
+		else command(muted ? 'player:mute' : 'player:unMute');
 	}
 	function play() { expectedPause = false; lastPlayAt = lastCommandAt = Date.now(); command('player:play'); }
 	function pause() { expectedPause = true; lastCommandAt = Date.now(); command('player:pause'); }
@@ -96,7 +119,7 @@
 		needsTap = false;
 		play();
 	}
-	function showRoom() { if (inParty()) chatOpen = !chatOpen; else setupOpen = !setupOpen; }
+	function showRoom() { qualityOpen = false; if (inParty()) chatOpen = !chatOpen; else setupOpen = !setupOpen; }
 	function mediaTime() {
 		return time + (!paused && !ad && lastTimeAt ? Math.min(1000, Date.now() - lastTimeAt) / 1000 : 0);
 	}
@@ -124,7 +147,7 @@
 		const message = readRutubeMessage(event, frame?.contentWindow ?? null);
 		if (!message) return;
 		const { type, data } = message;
-		if (type === 'player:ready') { apiReady = true; error = ''; }
+		if (type === 'player:ready') { apiReady = true; error = ''; command('player:hideControls'); }
 		else if (type === 'player:durationChange') {
 			const value = rutubeNumber(data.duration);
 			if (value && value > 0) { duration = value; timelineReady = true; error = ''; }
@@ -154,7 +177,15 @@
 			}
 		} else if (type === 'player:adStart' || (type === 'player:rollState' && data.state === 'play')) ad = true;
 		else if (type === 'player:adEnd' || (type === 'player:rollState' && data.state === 'complete')) { ad = false; lastTimeAt = Date.now(); }
-		else if (type === 'player:qualityList' && Array.isArray(data.list)) qualities = [...new Set(data.list.filter((q): q is number => typeof q === 'number' && q > 0 && q <= 4320))].sort((a, b) => a - b);
+		else if (type === 'player:qualityList') qualities = rutubeQualities(data.list);
+		else if (type === 'player:currentQuality') {
+			const info = rutubeCurrentQuality(data.quality);
+			if (info) { currentQuality = info.height; if (info.selection !== null) quality = info.selection; }
+		} else if (type === 'player:volumeChange') {
+			const value = typeof data.volume === 'string' && /^(?:0(?:\.\d+)?|1(?:\.0+)?)$/.test(data.volume) ? Number(data.volume) : data.volume;
+			if (typeof value === 'number' && Number.isFinite(value) && value >= 0 && value <= 1) volume = value;
+			if (typeof data.muted === 'boolean') muted = data.muted;
+		}
 		else if (type === 'player:error') error = 'RUTUBE не может воспроизвести этот ролик. Проверьте его доступность на RUTUBE.';
 		else if (type === 'player:playComplete') paused = true;
 		if (isHost() && ready && party.roomState?.sourcePending && party.roomState.targetHref === href) sendTranslation(null, null);
@@ -218,14 +249,20 @@
 		return () => { document.body.style.overflow = previous; };
 	});
 	$effect(() => {
-		const key = (event: KeyboardEvent) => { if (event.key === 'Escape') { pageFull = false; setupOpen = false; } };
+		const key = (event: KeyboardEvent) => {
+			if (event.key !== 'Escape') return;
+			if (qualityOpen) { qualityOpen = false; qualityButton?.focus(); }
+			else { pageFull = false; setupOpen = false; }
+		};
+		const outside = (event: PointerEvent) => { if (qualityOpen && event.target instanceof Element && !event.target.closest('.rutube-settings, .rutube-quality-button')) qualityOpen = false; };
 		const wake = () => { if (!document.hidden) { sync(); report(); } };
-		window.addEventListener('keydown', key); document.addEventListener('visibilitychange', wake);
-		return () => { window.removeEventListener('keydown', key); document.removeEventListener('visibilitychange', wake); };
+		window.addEventListener('keydown', key); window.addEventListener('pointerdown', outside); document.addEventListener('visibilitychange', wake);
+		return () => { window.removeEventListener('keydown', key); window.removeEventListener('pointerdown', outside); document.removeEventListener('visibilitychange', wake); };
 	});
 	function retry() {
 		apiReady = timelineReady = false; error = ''; ad = false; needsTap = false;
 		time = duration = 0; paused = expectedPause = true; qualities = []; quality = 'auto';
+		currentQuality = null; qualityOpen = false;
 		lastPlayAt = lastCommandAt = lastSeekAt = lastTimeAt = 0; pendingSeek = null; reload++;
 	}
 </script>
@@ -253,14 +290,28 @@
 			{:else if party.roomState?.waitingForReady || party.roomState?.sourcePending}<p>Ждём готовности всех участников…</p>
 			{:else}<p>{inParty() ? 'Кнопки ниже управляют общим просмотром.' : 'Создайте комнату через кнопку «Смотреть вместе».'}</p>{/if}
 		</div>
+		{#if qualityOpen}
+			<section class="rutube-settings" id="rutube-settings" aria-label="Настройки плеера RUTUBE">
+				<div class="settings-heading"><div><h2>Качество видео</h2><p>{currentQuality ? `Сейчас: ${currentQuality}p` : 'Настройка для вашего устройства'}</p></div><button type="button" class="rutube-icon" aria-label="Закрыть настройки качества" onclick={() => { qualityOpen = false; qualityButton?.focus(); }}><Icon name="close" size={18} /></button></div>
+				{#if qualities.length}
+					<div class="quality-options" role="group" aria-label="Доступное качество видео">
+						{#each ['auto', ...qualities.map(String)] as level (level)}
+							<button type="button" class="quality-option" class:selected={quality === level} aria-pressed={quality === level} disabled={ad} onclick={() => chooseQuality(level)}><span>{level === 'auto' ? 'Авто' : `${level}p`}{#if level === 'auto'}<small>По скорости сети</small>{:else if Number(level) >= 2160}<small>4K</small>{:else if Number(level) >= 1080}<small>Full HD</small>{:else if Number(level) >= 720}<small>HD</small>{/if}</span>{#if quality === level}<Icon name="check" size={16} />{/if}</button>
+						{/each}
+					</div>
+				{:else}<p class="quality-pending">Уровни качества появятся после запуска видео. Доступные варианты определяет RUTUBE.</p>{/if}
+				<div class="settings-volume"><div><button type="button" onclick={toggleMute} disabled={!apiReady} aria-label={muted ? 'Включить звук' : 'Выключить звук'} class="sound-toggle"><Icon name="volume" size={17} /><span>{muted ? 'Без звука' : 'Громкость'}</span></button><span>{muted ? 0 : Math.round(volume * 100)}%</span></div><input type="range" min="0" max="1" step="0.05" value={muted ? 0 : volume} oninput={(event) => changeVolume(Number(event.currentTarget.value))} disabled={!apiReady} aria-label="Громкость RUTUBE" /></div>
+				{#if inParty()}<p class="settings-note">Качество и звук меняются только у вас — синхронизация комнаты сохраняется.</p>{/if}
+			</section>
+		{/if}
 		<div class="rutube-controls" inert={!controlsVisible}>
 			<input type="range" min="0" max={duration || video.duration || 1} step="1" value={time} disabled={!timelineReady || ad} onchange={(event) => userSeek(Number(event.currentTarget.value))} aria-label="Перемотка общего видео" class="w-full accent-accent" />
 			<div class="flex min-w-0 items-center gap-1 sm:gap-2">
 				<button type="button" onclick={toggle} disabled={!apiReady || !!error || ad} class="rutube-icon" aria-label={inParty() ? party.roomState?.paused ? 'Воспроизвести' : 'Пауза' : paused ? 'Воспроизвести' : 'Пауза'}><Icon name={(inParty() ? party.roomState?.paused : paused) ? 'play' : 'pause'} size={20} /></button>
-				<button type="button" onclick={() => userSeek(Math.max(0, time - 10))} disabled={!timelineReady || ad} class="rutube-icon" aria-label="Назад на 10 секунд"><Icon name="rewind" size={18} /></button>
-				<button type="button" onclick={() => userSeek(time + 10)} disabled={!timelineReady || ad} class="rutube-icon" aria-label="Вперёд на 10 секунд"><Icon name="forward" size={18} /></button>
+				<button type="button" onclick={() => userSeek(Math.max(0, time - 10))} disabled={!timelineReady || ad} class="rutube-icon rutube-skip" aria-label="Назад на 10 секунд"><Icon name="rewind" size={18} /></button>
+				<button type="button" onclick={() => userSeek(time + 10)} disabled={!timelineReady || ad} class="rutube-icon rutube-skip" aria-label="Вперёд на 10 секунд"><Icon name="forward" size={18} /></button>
 				<span class="rutube-clock min-w-0 flex-1 truncate text-[11px] text-white/60">{formatTime(time)} / {formatTime(duration || video.duration)}</span>
-				{#if qualities.length}<select bind:value={quality} onchange={() => command('player:changeQuality', { quality })} aria-label="Качество RUTUBE" class="max-w-20 rounded-lg bg-white/10 px-1 py-2 text-xs"><option value="auto">Авто</option>{#each qualities as level}<option value={String(level)}>{level}p</option>{/each}</select>{/if}
+				<button bind:this={qualityButton} type="button" class="rutube-quality-button" aria-label="Качество RUTUBE" aria-expanded={qualityOpen} aria-controls="rutube-settings" onclick={() => { setupOpen = false; qualityOpen = !qualityOpen; }}><Icon name="sliders" size={18} /><span>{quality === 'auto' ? 'Авто' : `${quality}p`}</span></button>
 				<button type="button" onclick={showRoom} class="rutube-icon" aria-label="Открыть чат"><Icon name="chat" size={19} /></button>
 				<button type="button" onclick={() => void toggleFull()} class="rutube-icon" aria-label={full ? 'Выйти из полного экрана' : 'Полный экран'}><Icon name={full ? 'fullscreenExit' : 'fullscreen'} size={18} /></button>
 			</div>
@@ -281,6 +332,27 @@
 	.rutube-icon { display: inline-flex; flex-shrink: 0; width: 42px; height: 42px; align-items: center; justify-content: center; gap: 2px; border-radius: 12px; }
 	.rutube-icon:hover { background: #ffffff10; }
 	.rutube-icon:disabled { opacity: 0.35; }
+	.rutube-icon:focus-visible, .rutube-quality-button:focus-visible, .quality-option:focus-visible, .sound-toggle:focus-visible { outline: 2px solid #dce2eb; outline-offset: 2px; }
+	.rutube-quality-button { display: inline-flex; align-items: center; justify-content: center; flex-shrink: 0; gap: 6px; min-height: 44px; padding: 0 12px; border: 1px solid #ffffff16; border-radius: 12px; background: #ffffff08; color: #edf0f5; font-size: 12px; font-weight: 600; }
+	.rutube-quality-button:hover, .rutube-quality-button[aria-expanded="true"] { background: #ffffff12; border-color: #ffffff30; }
+	.rutube-settings { position: absolute; bottom: max(84px, calc(76px + env(safe-area-inset-bottom))); right: 12px; z-index: 40; width: min(300px, calc(100% - 24px)); max-height: min(440px, calc(100% - 100px)); overflow-y: auto; overscroll-behavior: contain; scrollbar-width: thin; border: 1px solid #ffffff20; border-radius: 18px; padding: 14px; background: #111318f5; color: #edf0f5; box-shadow: 0 12px 40px #0008; backdrop-filter: blur(20px); }
+	.settings-heading { display: flex; align-items: center; justify-content: space-between; gap: 8px; margin-bottom: 12px; }
+	.settings-heading h2 { font-size: 14px; font-weight: 600; }
+	.settings-heading p { margin-top: 3px; font-size: 11px; color: #a4acba; }
+	.settings-heading .rutube-icon { width: 36px; height: 36px; }
+	.quality-options { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 6px; }
+	.quality-option { display: flex; min-height: 48px; align-items: center; justify-content: space-between; gap: 4px; padding: 8px 11px; border: 1px solid #ffffff14; border-radius: 10px; background: #ffffff05; color: #edf0f5; text-align: left; font-size: 13px; font-weight: 600; }
+	.quality-option small { display: block; font-size: 10px; font-weight: 400; color: #a4acba; }
+	.quality-option:hover { background: #ffffff0e; }
+	.quality-option.selected { background: #dce2eb; border-color: #dce2eb; color: #111318; }
+	.quality-option.selected small { color: #505868; }
+	.quality-option:disabled { opacity: .5; }
+	.quality-pending, .settings-note { font-size: 11px; line-height: 1.5; color: #a4acba; }
+	.settings-volume { border-top: 1px solid #ffffff14; margin-top: 14px; padding-top: 10px; }
+	.settings-volume > div { display: flex; align-items: center; justify-content: space-between; font-size: 11px; color: #a4acba; }
+	.sound-toggle { display: flex; min-height: 36px; align-items: center; gap: 7px; color: #edf0f5; }
+	.settings-volume input { width: 100%; height: 28px; accent-color: #dce2eb; }
+	.settings-note { margin-top: 8px; }
 	.rutube-status { position: absolute; bottom: 78px; inset-inline: 0; z-index: 25; padding: 6px 16px; font-size: 11px; line-height: 1.5; color: #ffffffa0; background: #08090bd9; transition: opacity .25s ease; }
 	.rutube-controls { position: absolute; bottom: 0; inset-inline: 0; z-index: 25; padding: 5px 12px max(8px, env(safe-area-inset-bottom)); background: linear-gradient(#08090b90, #08090bf5); transition: opacity .25s ease; }
 	.hud-hidden .rutube-header, .hud-hidden .rutube-controls, .hud-hidden .rutube-status:not(.important-status) { opacity: 0; pointer-events: none; }
@@ -293,7 +365,8 @@
 		.with-chat .rutube-header { min-height: 44px; }
 		.with-chat .rutube-status:not(.important-status) { display: none; }
 		.rutube-controls { padding-inline: 6px; }
-		.rutube-icon { width: 36px; height: 40px; }
+		.rutube-icon { width: 40px; height: 44px; }
+		.rutube-quality-button { padding-inline: 9px; }
 	}
 	@media (max-height: 500px) {
 		.rutube-header { min-height: 40px; }
@@ -302,8 +375,8 @@
 	}
 	@media (max-width: 359px) {
 		.rutube-clock { font-size: 10px; }
-		.rutube-controls select { max-width: 58px; }
 	}
+	@media (max-width: 479px) { .rutube-skip { display: none; } }
 	.keyboard-open .rutube-header { display: none; }
 	@media (prefers-reduced-motion: reduce) { .rutube-header, .rutube-controls, .rutube-status { transition: none; } }
 </style>

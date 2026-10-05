@@ -9,16 +9,19 @@ const id = '564f31c881b83373bfe0cb26979d44cf';
 const browser = await chromium.launch({ channel: 'chrome', headless: true, args: ['--autoplay-policy=no-user-gesture-required'] });
 const errors = [];
 try {
-	for (const mobile of [false, true]) {
+	for (const mobile of process.argv[3] === 'mobile' ? [true] : [false, true]) {
 		const context = await browser.newContext(mobile ? { ...devices['Pixel 7'], viewport: { width: 390, height: 844 } } : { viewport: { width: 1280, height: 800 } });
 		const page = await context.newPage();
 		page.on('pageerror', (e) => errors.push(e.message));
+		try {
 		await page.addInitScript(() => {
 			window.__qualities = [];
+			window.__embedEvents = [];
 			addEventListener('message', (event) => {
 				if (event.origin !== 'https://rutube.ru') return;
 				try {
 					const m = typeof event.data === 'string' ? JSON.parse(event.data) : event.data;
+					if (m.type?.startsWith('player:')) window.__embedEvents.push({ type: m.type, code: m.type === 'player:error' ? m.data?.code : undefined });
 					if (m.type === 'player:currentQuality') window.__qualities.push(m.data.quality);
 				} catch {}
 			});
@@ -61,6 +64,11 @@ try {
 			assert.ok(await panel.evaluate((el) => el.getBoundingClientRect().right <= innerWidth));
 		}
 		console.log(JSON.stringify({ base, mobile, realProvider: true, selected720: true, resumedAuto: true, duplicatedControls: false, playbackAdvanced: after - before }));
+		} catch (error) {
+			const frame = page.frames().find((f) => f.url().startsWith('https://rutube.ru/play/embed/'));
+			console.error(JSON.stringify({ base, mobile, parentStatus: await page.locator('.rutube-status').innerText().catch(() => ''), providerText: (await frame?.locator('body').innerText().catch(() => ''))?.slice(0, 800), events: await page.evaluate(() => window.__embedEvents).catch(() => []) }));
+			throw error;
+		}
 		await context.close();
 	}
 	assert.deepEqual(errors, []);

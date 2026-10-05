@@ -8,8 +8,10 @@ const browser = await chromium.launch({ channel: 'chrome', headless: true, args:
 const errors = [];
 const states = [];
 const events = [];
+const viewers = [];
 async function viewer(name, viewport) {
 	const page = await (await browser.newContext({ viewport })).newPage();
+	viewers.push({ name, page });
 	page.on('pageerror', (e) => errors.push(`${name}: ${e.message}`));
 	page.on('websocket', (socket) => socket.on('framereceived', ({ payload }) => {
 		try { const m = JSON.parse(String(payload)); if (m.type === 'state') states.push({ viewer: name, ...m }); } catch {}
@@ -91,6 +93,7 @@ try {
 	assert.equal(errors.length, 0, errors.join('\n'));
 	console.log(JSON.stringify({ ok: true, realProvider: true, phase: 'pause-seek-reactions-chat', host: a, guest: b, drift: Math.abs(a.time - b.time) }));
 } catch (error) {
-	console.error(JSON.stringify({ errors, states: states.slice(-8), events: events.slice(-15) }));
+	const diagnostics = await Promise.all(viewers.map(async ({ name, page }) => ({ name, status: await page.locator('.rutube-status').innerText().catch(() => ''), providerText: (await iframe(page)?.locator('body').innerText().catch(() => ''))?.slice(0, 800), playback: await read(page).catch(() => null) })));
+	console.error(JSON.stringify({ errors, diagnostics, states: states.slice(-8), events: events.slice(-15) }));
 	throw error;
 } finally { await browser.close(); }

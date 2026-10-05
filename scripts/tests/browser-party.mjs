@@ -77,6 +77,14 @@ async function aligned(host, guest, phase) {
 	assert.ok(Math.abs(a.time - b.time) < 1.6, `${phase}: playback drift`);
 	assert.ok(!a.error && !b.error);
 }
+async function changedRoomStarted(changeId) {
+	for (let attempt = 0; attempt < 360; attempt++) {
+		const state = trace.findLast((s) => s.viewer === 'guest');
+		if (state && state.changeId > changeId && !state.paused && !state.waitingForReady && !state.sourcePending && state.serverTs >= state.anchorTs) return;
+		await new Promise((resolve) => setTimeout(resolve, 250));
+	}
+	assert.fail('The changed source did not complete the common readiness/countdown barrier');
+}
 try {
 	const host = await viewer('host');
 	await host.goto(`${base}/movie/550-fight-club/watch`, { waitUntil: 'domcontentloaded' });
@@ -185,10 +193,12 @@ try {
 	await control(host, 'Настройки');
 	const translations = host.locator('button.pitem:not(.pitem-on)').filter({ hasText: /^Торрент ·/ });
 	if (await translations.count()) {
+		const previousChange = trace.findLast((s) => s.viewer === 'guest')?.changeId ?? 0;
 		const sourceChanged = guest.waitForEvent('request', { predicate: (r) => r.url().includes('/api/playback/resolve') || r.url().includes('master.m3u8'), timeout: 90_000 });
 		await translations.first().click();
 		await guest.getByText(/^Ведущий меняет озвучку:/).waitFor();
 		await sourceChanged;
+		await changedRoomStarted(previousChange);
 		await playing(host);
 		await playing(guest);
 		await aligned(host, guest, 'shared-translation');
@@ -199,9 +209,11 @@ try {
 	await host.getByRole('button', { name: 'Настройки комнаты', exact: true }).click();
 	await host.getByRole('button', { name: 'Сменить фильм', exact: true }).click();
 	await host.getByLabel('Поиск фильма для комнаты').fill('Форрест');
+	const previousMovieChange = trace.findLast((s) => s.viewer === 'guest')?.changeId ?? 0;
 	await host.getByRole('button', { name: 'Форрест Гамп 1994' }).click();
 	await guest.getByText('Ведущий сменил фильм: Форрест Гамп', { exact: true }).waitFor();
 	await Promise.all([host.waitForURL(/13-forrest-gump\/watch/), guest.waitForURL(/13-forrest-gump\/watch/)]);
+	await changedRoomStarted(previousMovieChange);
 	await playing(host); await playing(guest);
 	await aligned(host, guest, 'shared-movie');
 	await control(host, 'Смотреть вместе');

@@ -31,6 +31,16 @@ interface DashPlayer {
 	initialize(video: HTMLVideoElement, url: string, autoplay: boolean): void;
 	on(event: 'error', cb: (e: { error?: { message?: string } | string }) => void): void;
 	reset(): void;
+	enableText(enable: boolean): boolean;
+	setTextTrack(index: number): void;
+}
+
+interface EmbeddedSubtitle {
+	id: string;
+	label: string;
+	language?: string;
+	engine: 'hls' | 'native';
+	index: number;
 }
 
 export interface PlayerTarget {
@@ -125,6 +135,7 @@ export class PlayerController {
 
 	activeTranslationId = $state<string | null>(null);
 	activeSubtitleId = $state<string | null>(null);
+	embeddedSubtitles = $state<EmbeddedSubtitle[]>([]);
 	/** Доступные раздачи торрента — для меню выбора раздачи/качества. */
 	torrentOptions = $state<TorrentOption[]>([]);
 	/** Сдвиг субтитров в секундах — бывает нужен, когда дорожка не совпадает с релизом. */
@@ -158,6 +169,10 @@ export class PlayerController {
 
 	get activeTranslation(): Translation | undefined {
 		return this.translations.find((t) => t.id === this.activeTranslationId);
+	}
+
+	get subtitleTracks() {
+		return [...(this.source?.subtitles ?? []), ...this.embeddedSubtitles];
 	}
 
 	/** Активный сегмент (заставка/титры) для кнопки «Пропустить». */
@@ -415,6 +430,10 @@ export class PlayerController {
 	private async attach(source: PlaybackSource, startAt: number): Promise<void> {
 		const video = this.video;
 		if (!video) return;
+		// Track IDs belong to a specific source. Do not carry a showing native
+		// track or a manifest's DEFAULT=YES into another audio source.
+		this.activeSubtitleId = null;
+		this.applySubtitles();
 
 		/*
 		 * Быстрый путь: тот же движок, другой манифест.
@@ -477,6 +496,7 @@ export class PlayerController {
 			});
 			dash.initialize(video, source.streamUrl, false);
 			this.dash = dash;
+			dash.enableText(false);
 			await this.seekWhenReady(video, startAt);
 			return;
 		}
@@ -518,6 +538,11 @@ export class PlayerController {
 					// реального времени — повторов нужно больше обычного.
 					fragLoadingMaxRetry: 8,
 					manifestLoadingMaxRetry: 3
+				});
+				hls.subtitleDisplay = false;
+				hls.on(HlsCtor.Events.SUBTITLE_TRACKS_UPDATED, () => {
+					this.refreshSubtitleTracks();
+					this.applySubtitles();
 				});
 
 				// Не считаем источник готовым, пока браузер действительно не разобрал
@@ -719,18 +744,45 @@ export class PlayerController {
 		}
 	}
 
-	async toggleFullscreen(container: HTMLElement | null): Promise<void> {
-		if (!container) return;
-		try {
-			if (document.fullscreenElement) await document.exitFullscreen();
-			else await container.requestFullscreen();
-		} catch {
-			// Отказ в полноэкранном режиме не должен ломать просмотр.
+	selectSubtitle(id: string | null): void {
+		this.activeSubtitleId = id;
+		this.applySubtitles();
+	}
+
+	private refreshSubtitleTracks(): void {
+		if (this.hls?.subtitleTracks.length) {
+			this.embeddedSubtitles = this.hls.subtitleTracks.map((track, index) => ({
+				id: `hls:${index}`, label: track.name || track.lang || `Субтитры ${index + 1}`,
+				language: track.lang, engine: 'hls', index
+			}));
+		} else if (this.video) {
+			const external = Array.from(this.video.querySelectorAll('track[data-subtitle-id]')).map((el) => (el as HTMLTrackElement).track);
+			this.embeddedSubtitles = Array.from(this.video.textTracks).flatMap((track, index) =>
+				(track.kind === 'subtitles' || track.kind === 'captions') && !external.includes(track)
+					? [{ id: `native:${index}`, label: track.label || track.language || `Субтитры ${index + 1}`,
+						language: track.language, engine: 'native' as const, index }] : []);
 		}
 	}
 
-	selectSubtitle(id: string | null): void {
-		this.activeSubtitleId = id;
+	/** Off means ALL captions are off, including tracks selected by HLS/Safari. */
+	applySubtitles(): void {
+		const video = this.video;
+		if (!video) return;
+		const chosen = this.embeddedSubtitles.find((track) => track.id === this.activeSubtitleId);
+		if (this.hls) {
+			this.hls.subtitleDisplay = chosen?.engine === 'hls';
+			const index = chosen?.engine === 'hls' ? chosen.index : -1;
+			if (this.hls.subtitleTrack !== index) this.hls.subtitleTrack = index;
+		}
+		if (this.dash && !this.activeSubtitleId) this.dash.enableText(false);
+		if (chosen?.engine === 'hls') return; // hls.js owns the selected TextTrack.
+		const external = Array.from(video.querySelectorAll('track[data-subtitle-id]'))
+			.find((el) => (el as HTMLElement).dataset.subtitleId === this.activeSubtitleId) as HTMLTrackElement | undefined;
+		Array.from(video.textTracks).forEach((track, index) => {
+			if (track.kind !== 'subtitles' && track.kind !== 'captions') return;
+			const mode = track === external?.track || (chosen?.engine === 'native' && chosen.index === index) ? 'showing' : 'disabled';
+			if (track.mode !== mode) track.mode = mode;
+		});
 	}
 
 	/**
@@ -811,6 +863,7 @@ export class PlayerController {
 		const onWaiting = () => (this.seeking = true);
 		const onPlaying = () => (this.seeking = false);
 		const onDuration = () => (this.duration = video.duration || 0);
+		const onTracks = () => { this.refreshSubtitleTracks(); this.applySubtitles(); };
 		const onPlay = () => (this.paused = false);
 		const onPause = () => (this.paused = true);
 		const onVolume = () => {
@@ -839,6 +892,10 @@ export class PlayerController {
 		video.addEventListener('volumechange', onVolume);
 		video.addEventListener('progress', onProgress);
 		video.addEventListener('ended', onEnded);
+		video.addEventListener('loadedmetadata', onTracks);
+		video.textTracks.addEventListener('addtrack', onTracks);
+		video.textTracks.addEventListener('removetrack', onTracks);
+		video.textTracks.addEventListener('change', onTracks);
 
 		return () => {
 			video.removeEventListener('timeupdate', onTime);
@@ -854,6 +911,10 @@ export class PlayerController {
 			video.removeEventListener('volumechange', onVolume);
 			video.removeEventListener('progress', onProgress);
 			video.removeEventListener('ended', onEnded);
+			video.removeEventListener('loadedmetadata', onTracks);
+			video.textTracks.removeEventListener('addtrack', onTracks);
+			video.textTracks.removeEventListener('removetrack', onTracks);
+			video.textTracks.removeEventListener('change', onTracks);
 		};
 	}
 
@@ -911,6 +972,8 @@ export class PlayerController {
 		// Уровни принадлежат конкретному манифесту: после пересборки они другие.
 		this.levels = [];
 		this.activeHeight = 0;
+		this.embeddedSubtitles = [];
+		this.activeSubtitleId = null;
 
 		if (this.hls) {
 			this.hls.destroy();

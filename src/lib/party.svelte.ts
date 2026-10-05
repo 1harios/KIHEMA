@@ -53,6 +53,10 @@ export interface RoomState {
 	buffering?: boolean;
 	waitingForReady?: boolean;
 	revision?: number;
+	sourcePending?: boolean;
+	changeId?: number;
+	changeKind?: 'movie' | 'translation' | 'source' | null;
+	changeLabel?: string | null;
 }
 
 /** Снимок текущего воспроизведения — отправляется при создании комнаты. */
@@ -392,13 +396,21 @@ async function reconnect(): Promise<void> {
 
 function acceptState(raw: Partial<RoomState>, by: string): void {
 	if ((raw.revision ?? 0) < (party.roomState?.revision ?? 0)) return;
+	const previousChange = party.roomState?.changeId ?? 0;
 	party.roomState = {
 		targetHref: watchHref(raw.targetHref ?? '') ?? '', paused: Boolean(raw.paused),
 		positionSec: Number(raw.positionSec ?? 0), anchorTs: Number(raw.anchorTs ?? serverNow()),
 		translationLabel: raw.translationLabel ?? null, torrent: raw.torrent ?? null,
 		rate: raw.rate ?? 1, buffering: Boolean(raw.buffering),
-		waitingForReady: Boolean(raw.waitingForReady), revision: raw.revision ?? 0
+		waitingForReady: Boolean(raw.waitingForReady), revision: raw.revision ?? 0,
+		sourcePending: Boolean(raw.sourcePending), changeId: raw.changeId ?? 0,
+		changeKind: raw.changeKind ?? null, changeLabel: raw.changeLabel ?? null
 	};
+	if ((raw.changeId ?? 0) > previousChange && party.status === 'in-room' && by !== party.selfId) {
+		const detail = raw.changeLabel ? `: ${raw.changeLabel}` : '';
+		pushToast(raw.changeKind === 'movie' ? `Ведущий сменил фильм${detail}`
+			: raw.changeKind === 'translation' ? `Ведущий меняет озвучку${detail}` : 'Ведущий меняет раздачу');
+	}
 	party.stateBy = by;
 	party.translationBy = by;
 	const st = party.roomState;
@@ -495,8 +507,8 @@ function handleMessage(m: Record<string, unknown>): void {
 			if (st) {
 				party.roomState = {
 					...st,
-					translationLabel: String(m.label),
-					torrent: tor ?? st.torrent
+					translationLabel: typeof m.label === 'string' ? m.label : null,
+					torrent: 'torrent' in m ? tor : st.torrent
 				};
 			}
 			party.translationBy = String(m.by ?? '');
@@ -621,15 +633,19 @@ export function reportPlayback(report: {
 }
 
 /** Смена фильма/серии — право хоста. */
-export function sendGoto(targetHref: string): void {
+export function sendGoto(targetHref: string, title?: string): void {
 	if (party.status !== 'in-room' || !isHost()) return;
-	send({ type: 'goto', targetHref });
+	send({ type: 'goto', targetHref, title });
+}
+
+export function sendSourceChange(): void {
+	if (party.status === 'in-room' && isHost()) send({ type: 'prepare' });
 }
 
 /** Смена озвучки — право хоста. torrent — раздача хоста, гости на неё переходят. */
-export function sendTranslation(label: string, torrent: string | null): void {
+export function sendTranslation(label: string | null, torrent: string | null): void {
 	if (party.status !== 'in-room' || !isHost()) return;
-	send({ type: 'translation', label, torrent: torrent ?? undefined });
+	send({ type: 'translation', label, torrent });
 }
 
 export function sendChat(text: string): void {

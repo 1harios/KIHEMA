@@ -97,13 +97,69 @@ class PartyTests(unittest.IsolatedAsyncioTestCase):
         self.room.state['torrent'] = 'a' * 40
         await server.handle_message(self.room, self.host, {'type': 'goto', 'targetHref': '/show/1-show/watch?season=2&episode=3&t=99&room=OLDOLD'})
         self.assertEqual(self.room.state['targetHref'], '/show/1-show/watch?episode=3&season=2')
-        self.assertFalse(self.room.pending_start)
+        self.assertTrue(self.room.pending_start)
         self.assertIsNone(self.room.state['torrent'])
         self.assertFalse(self.guest.ready)
+
+    async def test_new_movie_waits_for_host_source_then_starts_everyone(self):
+        await server.handle_message(self.room, self.host, {'type': 'goto', 'targetHref': '/movie/2-test/watch', 'title': 'Новый фильм'})
+        self.assertEqual(self.room.state['changeLabel'], 'Новый фильм')
+        await server.handle_message(self.room, self.host, self.report())
+        await server.handle_message(self.room, self.guest, self.report())
+        self.assertTrue(self.room.pending_start)
+        self.assertTrue(self.room.state['sourcePending'])
+        await server.handle_message(self.room, self.host, {'type': 'translation', 'label': 'Озвучка', 'torrent': 'a' * 40})
+        await server.handle_message(self.room, self.host, self.report(torrent='a' * 40, translationLabel='Озвучка'))
+        self.assertTrue(self.room.pending_start)
+        await server.handle_message(self.room, self.guest, self.report(torrent='a' * 40, translationLabel='Озвучка'))
+        self.assertFalse(self.room.pending_start)
+        self.assertFalse(self.room.state['paused'])
+        self.assertEqual(self.room.state['changeKind'], 'movie')
+        self.assertGreater(self.room.state['anchorTs'], server.now_ms() + 2500)
+
+    async def test_preparing_torrent_freezes_before_resolver_finishes(self):
+        self.room.state.update(paused=False, positionSec=30, translationLabel='Озвучка', torrent='a' * 40)
+        await server.handle_message(self.room, self.host, {'type': 'prepare'})
+        self.assertTrue(self.room.state['sourcePending'])
+        self.assertTrue(self.room.state['paused'])
+        self.assertTrue(self.room.pending_start)
+        await server.handle_message(self.room, self.host, self.report(torrent='a' * 40, translationLabel='Озвучка'))
+        self.assertFalse(self.host.ready)
+        await server.handle_message(self.room, self.host, {'type': 'translation', 'label': 'Озвучка', 'torrent': 'b' * 40})
+        self.assertFalse(self.room.state['sourcePending'])
+        self.assertEqual(self.room.state['torrent'], 'b' * 40)
+        self.assertEqual(self.room.state['changeId'], 1)
+
+    async def test_sources_without_audio_menu_can_finish_movie_change(self):
+        await server.handle_message(self.room, self.host, {'type': 'goto', 'targetHref': '/movie/2-test/watch'})
+        await server.handle_message(self.room, self.host, {'type': 'translation', 'label': None})
+        await server.handle_message(self.room, self.host, self.report())
+        await server.handle_message(self.room, self.guest, self.report())
+        self.assertFalse(self.room.pending_start)
+
+    async def test_guest_cannot_change_movie_or_prepare_source(self):
+        for msg in ({'type': 'goto', 'targetHref': '/movie/2-test/watch'}, {'type': 'prepare'}, {'type': 'translation', 'label': 'Другая'}):
+            await server.handle_message(self.room, self.guest, msg)
+        self.assertEqual(self.room.state['changeId'], 0)
+        self.assertEqual(self.room.state['targetHref'], '/movie/550-fight-club/watch')
+
+    async def test_switching_back_to_cdn_clears_torrent_selection(self):
+        self.room.state['torrent'] = 'a' * 40
+        await server.handle_message(self.room, self.host, {'type': 'translation', 'label': 'CDN', 'torrent': None})
+        self.assertIsNone(self.room.state['torrent'])
 
     async def test_rate_is_shared(self):
         await server.handle_message(self.room, self.guest, {'type': 'rate', 'intent': True, 'rate': 1.5, 'positionSec': 25})
         self.assertEqual(self.room.state['rate'], 1.5)
+
+    async def test_play_click_cannot_bypass_loading_barrier(self):
+        self.room.state['sourcePending'] = True
+        await server.handle_message(self.room, self.host, {'type': 'state', 'intent': True, 'paused': False, 'positionSec': 5})
+        self.assertTrue(self.room.state['paused'])
+        self.assertTrue(self.room.pending_start)
+        await server.handle_message(self.room, self.guest, {'type': 'seek', 'intent': True, 'positionSec': 10})
+        self.assertTrue(self.room.pending_start)
+        self.assertTrue(self.room.state['waitingForReady'])
 
     async def test_translation_waits_for_matching_source_before_restart(self):
         self.room.state['paused'] = False

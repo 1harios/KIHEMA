@@ -13,6 +13,55 @@ function load(file, fetch = globalThis.fetch) {
 }
 const helpers = load('src/lib/party-sync.ts');
 
+test('fullscreen request includes the room and falls back when the API rejects', async () => {
+	const { enterFullscreen } = load('src/lib/player/fullscreen.ts');
+	const root = { requestFullscreen: async () => { throw new Error('unsupported on this phone'); } };
+	assert.equal(await enterFullscreen(root), false);
+	assert.equal(await enterFullscreen({}), false);
+});
+
+test('fullscreen uses the entire root and exits the matching WebKit API', async () => {
+	const { enterFullscreen, exitFullscreen } = load('src/lib/player/fullscreen.ts');
+	let exited = false;
+	const previous = globalThis.document;
+	try {
+		globalThis.document = { fullscreenElement: null, webkitFullscreenElement: null,
+			exitFullscreen: () => { throw new Error('wrong fullscreen API'); },
+			webkitExitFullscreen: () => { exited = true; } };
+		const root = { webkitRequestFullscreen: () => { document.webkitFullscreenElement = root; } };
+		assert.equal(await enterFullscreen(root), true);
+		await exitFullscreen();
+		assert.equal(exited, true);
+	} finally { if (previous) globalThis.document = previous; else delete globalThis.document; }
+});
+
+test('subtitles off disables native captions and the HLS subtitle engine', () => {
+	const { PlayerController } = load('src/lib/player/controller.svelte.ts');
+	const player = new PlayerController();
+	const subtitles = { kind: 'subtitles', mode: 'showing' };
+	const captions = { kind: 'captions', mode: 'showing' };
+	const metadata = { kind: 'metadata', mode: 'hidden' };
+	player.video = { textTracks: [subtitles, captions, metadata], querySelectorAll: () => [] };
+	player.hls = { subtitleTrack: 0, subtitleDisplay: true };
+	player.selectSubtitle(null);
+	assert.equal(player.hls.subtitleTrack, -1);
+	assert.equal(player.hls.subtitleDisplay, false);
+	assert.equal(subtitles.mode, 'disabled');
+	assert.equal(captions.mode, 'disabled');
+	assert.equal(metadata.mode, 'hidden');
+});
+
+test('native subtitle selection enables only the chosen track', () => {
+	const { PlayerController } = load('src/lib/player/controller.svelte.ts');
+	const player = new PlayerController();
+	const tracks = [{ kind: 'subtitles', mode: 'disabled' }, { kind: 'subtitles', mode: 'showing' }];
+	player.video = { textTracks: tracks, querySelectorAll: () => [] };
+	player.embeddedSubtitles = [{ id: 'native:0', engine: 'native', index: 0, label: 'Русские' }];
+	player.selectSubtitle('native:0');
+	assert.equal(tracks[0].mode, 'showing');
+	assert.equal(tracks[1].mode, 'disabled');
+});
+
 test('join accepts a room code, a new invite, or a legacy player URL', () => {
 	assert.equal(helpers.roomCodeFrom(' abc234 '), 'ABC234');
 	assert.equal(helpers.roomCodeFrom('https://kihema.vercel.app/party/ABC234'), 'ABC234');

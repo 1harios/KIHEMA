@@ -57,6 +57,8 @@
 	import Icon from './ui/Icon.svelte';
 	import PartyPanel from './party/PartyPanel.svelte';
 	import PartySetup from './party/PartySetup.svelte';
+	import { enterFullscreen, exitFullscreen, fullscreenElement } from '$lib/player/fullscreen';
+	import { sendSourceChange } from '$lib/party.svelte';
 
 	interface Props {
 		target: PlayerTarget;
@@ -71,10 +73,16 @@
 	const player = new PlayerController();
 
 	let container: HTMLElement | null = $state(null);
+	let shell: HTMLElement | null = $state(null);
 	let videoEl: HTMLVideoElement | null = $state(null);
 	let controlsVisible = $state(true);
 	let settingsOpen = $state(false);
-	let isFullscreen = $state(false);
+	let nativeFullscreen = $state(false);
+	let pageFullscreen = $state(false);
+	const isFullscreen = $derived(nativeFullscreen || pageFullscreen);
+	let viewportHeight = $state('100dvh');
+	let viewportTop = $state(0);
+	let keyboardOpen = $state(false);
 	let hideTimer: ReturnType<typeof setTimeout> | null = null;
 	let loadingStep = $state(0);
 
@@ -244,9 +252,56 @@
 
 	// Иконка полного экрана должна отражать реальное состояние, а не наши догадки.
 	$effect(() => {
-		const sync = () => (isFullscreen = Boolean(document.fullscreenElement));
+		const sync = () => (nativeFullscreen = fullscreenElement() === shell);
 		document.addEventListener('fullscreenchange', sync);
-		return () => document.removeEventListener('fullscreenchange', sync);
+		document.addEventListener('webkitfullscreenchange', sync);
+		return () => {
+			document.removeEventListener('fullscreenchange', sync);
+			document.removeEventListener('webkitfullscreenchange', sync);
+		};
+	});
+
+	async function toggleFullscreen() {
+		if (!shell) return;
+		if (pageFullscreen) pageFullscreen = false;
+		else if (fullscreenElement()) await exitFullscreen().catch(() => {});
+		else pageFullscreen = !(await enterFullscreen(shell));
+		wake();
+	}
+
+	// VisualViewport shrinks with the phone keyboard, unlike 100vh. Keep the
+	// chat composer in the visible area in both native and in-page fullscreen.
+	$effect(() => {
+		const viewport = window.visualViewport;
+		const sync = () => {
+			viewportHeight = `${viewport?.height ?? window.innerHeight}px`;
+			viewportTop = viewport?.offsetTop ?? 0;
+			keyboardOpen = (viewport?.height ?? innerHeight) < innerHeight * 0.75;
+		};
+		sync();
+		viewport?.addEventListener('resize', sync);
+		viewport?.addEventListener('scroll', sync);
+		window.addEventListener('resize', sync);
+		return () => {
+			viewport?.removeEventListener('resize', sync);
+			viewport?.removeEventListener('scroll', sync);
+			window.removeEventListener('resize', sync);
+		};
+	});
+
+	$effect(() => {
+		if (!pageFullscreen) return;
+		const previous = document.body.style.overflow;
+		document.body.style.overflow = 'hidden';
+		return () => { document.body.style.overflow = previous; };
+	});
+
+	$effect(() => {
+		if (!pageFullscreen && !partyPanelOpen) return;
+		return registerKeys({ id: 'player-room-overlay', priority: 55, bindings: [{
+			combos: ['Escape'], hint: 'Esc', title: 'Закрыть чат или полный экран', group: 'Плеер', hidden: true,
+			run: () => { if (partyPanelOpen) partyPanelOpen = false; else pageFullscreen = false; }
+		}] });
 	});
 
 	/* ------------------------------ показ панели ---------------------------- */
@@ -296,7 +351,7 @@
 
 	/** Субтитры одной клавишей: первые доступные или выключить. */
 	function toggleSubtitles() {
-		const list = player.source?.subtitles ?? [];
+		const list = player.subtitleTracks;
 		if (!list.length) return;
 		player.selectSubtitle(player.activeSubtitleId ? null : list[0].id);
 	}
@@ -389,7 +444,7 @@
 					hint: 'F',
 					title: 'Полный экран',
 					group: 'Плеер',
-					run: withWake(() => void player.toggleFullscreen(container))
+					run: withWake(() => void toggleFullscreen())
 				},
 				{
 					combos: ['p'],
@@ -546,6 +601,10 @@
 	const activeSubtitle = $derived(
 		player.source?.subtitles.find((s) => s.id === player.activeSubtitleId)
 	);
+	$effect(() => {
+		player.activeSubtitleId;
+		untrack(() => queueMicrotask(() => player.applySubtitles()));
+	});
 
 	const segmentLabel = $derived.by(() => {
 		switch (player.activeSegment?.type) {
@@ -691,7 +750,8 @@
 	function reportRoomPlayback() {
 		const v = videoEl;
 		if (!v || party.status !== 'in-room') return;
-		const ready = player.status === 'ready' && v.readyState >= 2 && !v.seeking && !player.autoplayBlocked;
+		const positioned = !party.roomState?.waitingForReady || Math.abs(v.currentTime - sharedPosition()) < 1.5;
+		const ready = player.status === 'ready' && v.readyState >= 2 && !v.seeking && !player.autoplayBlocked && positioned;
 		reportPlayback({
 			targetHref: watchHref(page.url.pathname + page.url.search) ?? '',
 			ready, buffering: !ready, positionSec: v.currentTime,
@@ -705,6 +765,8 @@
 		const v = videoEl;
 		if (!st || !v || party.status !== 'in-room') return;
 		if (watchHref(page.url.pathname + page.url.search) !== st.targetHref) return;
+		const hold = st.paused || st.waitingForReady || st.sourcePending || serverNow() < st.anchorTs || (st.buffering && !isHost());
+		if (hold && !v.paused) player.pause();
 		if (player.status !== 'ready') return;
 		const myHash = player.source?.provider === 'torrent' ? player.source.mediaSourceId : null;
 		if (!isHost() && st.torrent && myHash !== st.torrent) {
@@ -722,8 +784,6 @@
 				pushToast('Озвучка ведущего недоступна в вашем источнике');
 			}
 		}
-		const hold = st.paused || st.waitingForReady || serverNow() < st.anchorTs || (st.buffering && !isHost());
-		if (hold && !v.paused) player.pause();
 		if (v.readyState < 1) return;
 		const shared = Math.min(sharedPosition(), player.duration || Infinity);
 		const drift = shared - v.currentTime;
@@ -769,10 +829,10 @@
 	// Announce the host's actual source after it is ready, including torrent changes.
 	$effect(() => {
 		if (party.status !== 'in-room' || !isHost() || player.status !== 'ready') return;
-		const label = player.activeTranslation?.label;
+		const label = player.activeTranslation?.label ?? null;
 		const hash = player.source?.provider === 'torrent' ? player.source.mediaSourceId : null;
 		const st = party.roomState;
-		if (label && st && watchHref(page.url.pathname + page.url.search) === st.targetHref && (label !== st.translationLabel || hash !== st.torrent)) {
+		if (st && watchHref(page.url.pathname + page.url.search) === st.targetHref && (st.sourcePending || label !== st.translationLabel || hash !== st.torrent)) {
 			untrack(() => sendTranslation(label, hash));
 		}
 	});
@@ -789,7 +849,7 @@
 
 	/** Переход, синхронный для комнаты: хост объявляет его всем. */
 	function goWithParty(href: string) {
-		if (inParty() && isHost()) sendGoto(href);
+		if (inParty() && isHost()) sendGoto(href, context.title);
 		void goto(withPartyParams(href));
 	}
 
@@ -962,10 +1022,13 @@
 
 
 <!-- svelte-ignore a11y_no_static_element_interactions -->
-<div class="flex h-dvh w-full overflow-hidden bg-black">
+<div bind:this={shell} class="player-shell flex h-dvh w-full overflow-hidden bg-black"
+	class:page-fullscreen={pageFullscreen} class:chat-open={partyPanelOpen && inParty()}
+	class:keyboard-open={keyboardOpen}
+	style="--viewport-height: {viewportHeight}; --viewport-top: {viewportTop}px;">
 <div
 	bind:this={container}
-	class="relative h-full min-w-0 flex-1 select-none overflow-hidden bg-black"
+	class="player-video relative h-full min-h-0 min-w-0 flex-1 select-none overflow-hidden bg-black"
 	onpointermove={wake}
 	onpointerleave={() => (hoverRatio = null)}
 	style="cursor: {controlsVisible ? 'default' : 'none'}"
@@ -978,15 +1041,18 @@
 		preload="auto"
 		onpointerup={onVideoPointerUp}
 	>
+		{#key activeSubtitle?.id}
 		{#if activeSubtitle}
 			<track
 				kind="subtitles"
 				src={activeSubtitle.url}
 				srclang={activeSubtitle.language ?? 'ru'}
 				label={activeSubtitle.label}
-				default
+				data-subtitle-id={activeSubtitle.id}
+				onload={() => player.applySubtitles()}
 			/>
 		{/if}
+		{/key}
 	</video>
 
 	<!-- ========================== экран ожидания ========================== -->
@@ -1112,6 +1178,15 @@
 	{/if}
 
 	<!-- ===================== центральная кнопка на паузе =================== -->
+	{#if inParty() && player.status === 'ready' && (party.roomState?.waitingForReady || party.roomState?.sourcePending) && !keyboardOpen}
+		<div class="pointer-events-none absolute inset-x-4 top-1/2 z-20 -translate-y-1/2 text-center" role="status">
+			<div class="mx-auto w-fit max-w-sm rounded-xl border border-white/15 bg-black/80 px-4 py-3 text-xs backdrop-blur-md">
+				<p class="font-semibold text-white">{party.roomState.changeKind === 'movie' ? 'Загружаем новый фильм'
+					: party.roomState.changeKind === 'translation' ? 'Меняем озвучку у всех' : 'Готовим совместный просмотр'}</p>
+				<p class="mt-1 text-white/55">Готовы {party.peers.filter((p) => p.ready).length} из {party.peers.length} · начнём одновременно</p>
+			</div>
+		</div>
+	{/if}
 	{#if player.status === 'ready' && player.autoplayBlocked && inParty()}
 		<button
 			type="button"
@@ -1193,7 +1268,7 @@
 
 	<!-- ============================ верхняя полоса ========================= -->
 	<div
-		class="pointer-events-none absolute inset-x-0 top-0 z-10 bg-gradient-to-b from-black/85
+		class="player-heading pointer-events-none absolute inset-x-0 top-0 z-10 bg-gradient-to-b from-black/85
 		       to-transparent px-[var(--gutter)] pb-16 pt-4 transition-opacity duration-[var(--t-mid)]"
 		style="opacity: {controlsVisible ? 1 : 0}"
 	>
@@ -1241,7 +1316,7 @@
 
 	<!-- ============================ нижняя панель ========================== -->
 	<div
-		class="absolute inset-x-0 bottom-0 z-20 bg-gradient-to-t from-black/92 via-black/55
+		class="player-controls absolute inset-x-0 bottom-0 z-20 bg-gradient-to-t from-black/92 via-black/55
 		       to-transparent px-[var(--gutter)] pb-4 pt-20 transition-opacity duration-[var(--t-mid)]"
 		style="opacity: {controlsVisible ? 1 : 0}; pointer-events: {controlsVisible ? 'auto' : 'none'}"
 	>
@@ -1354,7 +1429,7 @@
 			{/if}
 
 			<!-- Громкость: ползунок раскрывается по наведению, чтобы не занимать место -->
-			<div class="group/vol hidden items-center sm:flex">
+			<div class="player-volume group/vol hidden items-center sm:flex">
 				<button
 					type="button"
 					onclick={() => player.toggleMute()}
@@ -1381,7 +1456,7 @@
 				</div>
 			</div>
 
-			<span class="tnum ml-1.5 shrink-0 text-[12.5px] text-white/75">
+			<span class="player-time tnum ml-1.5 shrink-0 text-[12.5px] text-white/75">
 				{formatTime(shownTime)}
 				<span class="text-white/35"> / {formatTime(player.duration)}</span>
 			</span>
@@ -1439,7 +1514,7 @@
 					{#if settingsOpen}
 						<!-- Одна панель на всё: качество, озвучка, субтитры, скорость. -->
 						<div
-							class="absolute bottom-full right-0 z-30 mb-3 max-h-[60vh] w-72 overflow-y-auto
+							class="player-settings absolute bottom-full right-0 z-30 mb-3 max-h-[60vh] w-72 overflow-y-auto
 							       rounded-md border border-white/12 bg-canvas/97 py-2 shadow-4
 							       backdrop-blur-xl"
 						>
@@ -1484,7 +1559,11 @@
 									<button
 										type="button"
 										disabled={partyLocked}
-										onclick={() => player.switchTorrent(o.hash)}
+										onclick={() => {
+											if (o.hash === player.source?.mediaSourceId) return;
+											if (inParty() && isHost()) sendSourceChange();
+											player.switchTorrent(o.hash);
+										}}
 										class="pitem {o.hash === player.source?.mediaSourceId ? 'pitem-on' : ''}
 										       {partyLocked ? 'opacity-50' : ''}"
 									>
@@ -1529,7 +1608,7 @@
 								{/each}
 							{/if}
 
-							{#if player.source?.subtitles.length}
+							{#if player.subtitleTracks.length}
 								<p class="psection">
 									<Icon name="subtitles" size={13} />
 									Субтитры
@@ -1542,7 +1621,7 @@
 									<span class="flex-1">Выключены</span>
 									{#if !player.activeSubtitleId}<Icon name="check" size={14} />{/if}
 								</button>
-								{#each player.source.subtitles as s (s.id)}
+								{#each player.subtitleTracks as s (s.id)}
 									<button
 										type="button"
 										onclick={() => player.selectSubtitle(s.id)}
@@ -1579,7 +1658,7 @@
 				<button
 					type="button"
 					onclick={() => void player.togglePip()}
-					class="pctl hidden md:grid"
+					class="pctl pip-control hidden md:grid"
 					aria-label="Картинка в картинке"
 				>
 					<Icon name="pip" size={19} />
@@ -1587,7 +1666,7 @@
 
 				<button
 					type="button"
-					onclick={() => void player.toggleFullscreen(container)}
+					onclick={() => void toggleFullscreen()}
 					class="pctl"
 					aria-label={isFullscreen ? 'Выйти из полного экрана' : 'Полный экран'}
 				>
@@ -1678,13 +1757,40 @@
 	{/if}
 </div>
 
-<!-- Панель комнаты стоит рядом с видео и не перекрывает его. -->
+<!-- Inside the fullscreen root: video and chat remain accessible together. -->
 {#if partyPanelOpen && inParty()}
-	<PartyPanel onClose={() => (partyPanelOpen = false)} />
+	<PartyPanel compact={keyboardOpen} onClose={() => (partyPanelOpen = false)} />
 {/if}
 </div>
 
 <style>
+	.player-video { container-type: size; }
+	@container (max-width: 480px) {
+		.player-controls .pctl { width: 40px; height: 44px; }
+		.player-controls .pip-control, .player-volume { display: none; }
+		.player-time { margin-left: 0; font-size: 11px; }
+		.player-time > span { display: none; }
+		.player-controls { padding-left: 10px; padding-right: 10px; padding-bottom: max(6px, env(safe-area-inset-bottom)); }
+		.player-heading { padding-left: 10px; padding-right: 10px; }
+		.player-settings { right: -36px; width: min(288px, calc(100cqw - 20px)); max-height: calc(100cqh - 90px); }
+	}
+	@container (max-height: 150px) {
+		.player-heading { display: none; }
+	}
+	.player-shell { position: relative; }
+	.player-shell.page-fullscreen {
+		position: fixed; inset: 0; top: var(--viewport-top); z-index: 100;
+		height: var(--viewport-height); overscroll-behavior: contain;
+	}
+	@media (max-width: 639px) and (orientation: portrait) {
+		.player-shell { height: var(--viewport-height); }
+		.player-shell.chat-open { flex-direction: column; }
+		.player-shell.chat-open > :first-child { flex: 0 0 min(32dvh, 240px); min-height: 130px; }
+		.player-shell.chat-open.keyboard-open > :first-child { flex-basis: 96px; min-height: 96px; }
+	}
+	@media (max-height: 500px) and (orientation: landscape) {
+		.player-shell { height: var(--viewport-height); }
+	}
 	/*
 	  Локальные классы, а не утилиты: эти три набора повторяются в разметке по
 	  десять раз каждый, и в атрибутах они превращали строки классов в кашу.

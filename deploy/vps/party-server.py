@@ -102,6 +102,10 @@ class Room:
             "buffering": False,
             "waitingForReady": False,
             "revision": 0,
+            "sourcePending": False,
+            "changeId": 0,
+            "changeKind": None,
+            "changeLabel": None,
         }
 
     def presence_payload(self, why: str = "") -> dict:
@@ -171,10 +175,12 @@ def handle_sync(room: Room, peer: Peer, msg: dict) -> dict | None:
     if not valid_position(pos):
         return None
     reanchor(room, float(pos))
-    room.pending_start = False
-    st['waitingForReady'] = False
     if msg["type"] == "state":
-        st["paused"] = bool(msg.get("paused", False))
+        wants_pause = bool(msg.get("paused", False))
+        must_wait = st['sourcePending'] or not all(p.ready for p in room.peers.values())
+        room.pending_start = not wants_pause and must_wait
+        st['waitingForReady'] = room.pending_start
+        st["paused"] = wants_pause or must_wait
     elif msg["type"] == "seek":
         pass
     elif msg['type'] == 'rate':
@@ -187,7 +193,7 @@ def handle_sync(room: Room, peer: Peer, msg: dict) -> dict | None:
 async def maybe_start(room: Room) -> None:
     if not room.pending_start or not room.peers or room.host_id not in room.peers:
         return
-    if not all(p.ready for p in room.peers.values()):
+    if room.state['sourcePending'] or not all(p.ready for p in room.peers.values()):
         return
     room.pending_start = False
     reanchor(room)
@@ -223,9 +229,28 @@ async def handle_message(room: Room, peer: Peer, msg: dict) -> None:
         st["translationLabel"] = None
         st["torrent"] = None
         st['buffering'] = False
-        st['waitingForReady'] = False
+        st['waitingForReady'] = True
+        st['sourcePending'] = True
+        st['changeId'] += 1
+        st['changeKind'] = 'movie'
+        title = msg.get('title')
+        st['changeLabel'] = title.strip()[:200] if isinstance(title, str) else None
         st['revision'] += 1
-        room.pending_start = False
+        room.pending_start = True
+        for p in room.peers.values():
+            p.ready = p.protocol < 2
+        await room.broadcast(room.state_payload(peer.id))
+        await room.broadcast(room.presence_payload('loading'))
+
+    elif t == 'prepare' and is_host:
+        # Freeze the shared clock BEFORE resolving the host's new torrent.
+        # Guests keep the old frame, never continue playing the old source.
+        reanchor(room)
+        resume = not room.state['paused'] or room.pending_start
+        room.state.update(paused=True, buffering=False, waitingForReady=resume, sourcePending=True,
+                          changeKind='source', changeLabel=None)
+        room.pending_start = resume
+        room.state['changeId'] += 1
         for p in room.peers.values():
             p.ready = p.protocol < 2
         await room.broadcast(room.state_payload(peer.id))
@@ -233,12 +258,23 @@ async def handle_message(room: Room, peer: Peer, msg: dict) -> None:
 
     elif t == "translation" and is_host:
         label = msg.get("label")
-        if not isinstance(label, str) or not label or len(label) > 500:
+        if label is not None and (not isinstance(label, str) or not label or len(label) > 500):
+            return
+        if label is None and not room.state['sourcePending']:
             return
         tor = msg.get('torrent')
-        tor = tor.lower() if isinstance(tor, str) and re.fullmatch(r'[a-fA-F0-9]{40}|[a-zA-Z2-7]{32}', tor) else room.state['torrent']
-        if label == room.state['translationLabel'] and tor == room.state['torrent']:
+        if 'torrent' in msg and tor is None:
+            tor = None
+        else:
+            tor = tor.lower() if isinstance(tor, str) and re.fullmatch(r'[a-fA-F0-9]{40}|[a-zA-Z2-7]{32}', tor) else room.state['torrent']
+        pending = room.state['sourcePending']
+        if not pending and label == room.state['translationLabel'] and tor == room.state['torrent']:
             return
+        if not pending:
+            room.state['changeId'] += 1
+            room.state['changeKind'] = 'translation'
+            room.state['changeLabel'] = label
+        room.state['sourcePending'] = False
         if not room.state['paused'] or room.pending_start:
             reanchor(room)
             room.state.update(paused=True, waitingForReady=True, buffering=False)
@@ -246,12 +282,10 @@ async def handle_message(room: Room, peer: Peer, msg: dict) -> None:
         for p in room.peers.values():
             p.ready = p.protocol < 2
         room.state["translationLabel"] = label
-        payload = {"type": "translation", "label": label, "by": peer.id}
+        payload = {"type": "translation", "label": label, "by": peer.id, "torrent": tor}
         # Раздача, на которой сидит хост: у гостей своя может отличаться,
         # тогда дорожки не сойдутся — переводим их на раздачу хоста.
-        if tor:
-            room.state["torrent"] = tor.lower()
-            payload["torrent"] = tor.lower()
+        room.state["torrent"] = tor
         room.state['revision'] += 1
         await room.broadcast(payload)
         await room.broadcast(room.state_payload(peer.id))
@@ -300,7 +334,7 @@ async def handle_message(room: Room, peer: Peer, msg: dict) -> None:
             return
         source_matches = not st['torrent'] or msg.get('torrent') == st['torrent']
         label_matches = not st['translationLabel'] or msg.get('translationLabel') == st['translationLabel']
-        ready = msg.get('ready') is True and source_matches and label_matches
+        ready = msg.get('ready') is True and source_matches and label_matches and not st['sourcePending']
         changed = ready != peer.ready or bool(msg.get('buffering')) != peer.buffering
         peer.ready = ready
         peer.buffering = bool(msg.get('buffering'))

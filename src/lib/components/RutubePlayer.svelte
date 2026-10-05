@@ -78,8 +78,15 @@
 	}
 	function snapshot(): RoomSnapshot { return { targetHref: href, paused, positionSec: time, translationLabel: null, torrent: null }; }
 	function toggle() {
+		const initialize = !timelineReady || needsTap;
 		needsTap = false;
-		if (inParty()) sendState(!party.roomState?.paused, sharedPosition());
+		if (inParty()) {
+			const wantsPause = !party.roomState?.paused;
+			sendState(wantsPause, sharedPosition());
+			// A first local Play can be required before the API reveals a timeline.
+			// The server still holds the common clock until all viewers are ready.
+			if (!wantsPause && initialize) play();
+		}
 		else if (paused) play(); else pause();
 	}
 	function userSeek(value: number) {
@@ -135,7 +142,8 @@
 				if (inParty() && isHost() && pendingSeek === null && Date.now() - lastCommandAt > 2000 && Math.abs(value - previous) > 3) sendSeek(value);
 			}
 		} else if (type === 'player:changeState') {
-			if (data.state === 'playing' || data.state === 'paused' || data.state === 'stopped') {
+			// The live player emits "pause"; some API versions use "paused".
+			if (data.state === 'playing' || data.state === 'pause' || data.state === 'paused' || data.state === 'stopped' || data.state === 'ended') {
 				const wasPaused = paused;
 				paused = data.state !== 'playing';
 				if (!paused) { needsTap = false; lastTimeAt = Date.now(); }
@@ -237,12 +245,12 @@
 			<PartyReactions />
 		</div>
 		<button type="button" onclick={wake} class="show-controls" inert={controlsVisible} aria-hidden={controlsVisible} aria-label="Показать управление"><Icon name="chevronDown" size={18} /></button>
-		<div class="rutube-status" class:important-status={!!error || ad || needsTap} aria-live="polite">
+		<div class="rutube-status" class:important-status={!!error || ad || needsTap || !timelineReady} aria-live="polite">
 			{#if error}<p class="text-warn">{error} <button type="button" onclick={retry} class="underline">Повторить</button> · <a href={rutubeVideoUrl(video.id)} target="_blank" rel="noopener noreferrer" class="underline">Открыть на RUTUBE</a></p>
 			{:else if ad}<p>Участник смотрит рекламу RUTUBE. Общий просмотр продолжится после готовности всех.</p>
 			{:else if needsTap}<button type="button" onclick={arm} class="text-accent underline">Разрешить воспроизведение</button><span> — если видео не стартует, нажмите Play в плеере RUTUBE.</span>
+			{:else if !timelineReady}<button type="button" onclick={arm} disabled={!apiReady} class="text-accent underline disabled:opacity-50">Загрузить видео</button><span> — RUTUBE может требовать первый Play у каждого зрителя.</span>
 			{:else if party.roomState?.waitingForReady || party.roomState?.sourcePending}<p>Ждём готовности всех участников…</p>
-			{:else if !timelineReady}<p>Нажмите Play в плеере RUTUBE, если он ожидает разрешение браузера.</p>
 			{:else}<p>{inParty() ? 'Кнопки ниже управляют общим просмотром.' : 'Создайте комнату через кнопку «Смотреть вместе».'}</p>{/if}
 		</div>
 		<div class="rutube-controls" inert={!controlsVisible}>

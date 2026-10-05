@@ -16,17 +16,18 @@ const browser = await chromium.launch({ channel: 'chrome', headless: true });
 const errors = [];
 const trace = [];
 const fixture = `<!doctype html><html><head><meta charset="utf-8"></head><body style="margin:0;background:#101216;color:white;display:grid;place-items:center;height:100vh;font:18px sans-serif"><span>Тест официального API RUTUBE</span><script>
-let time=0, paused=true, ad=false, blockPlay=false, quality='auto';
+const deferTimeline=false;
+let loaded=false, time=0, paused=true, ad=false, blockPlay=false, quality='auto';
 const emit=(type,data={})=>parent.postMessage(JSON.stringify({type,data}),'*');
 const state=()=>({time,paused,ad,quality});
-window.__fixture={state,advertising(on){ad=on;emit(on?'player:adStart':'player:adEnd');},permission(on){blockPlay=on;},nativePause(){paused=true;emit('player:changeState',{state:'paused'});},nativeSeek(value){time=value;emit('player:currentTime',{time});}};
+window.__fixture={state,advertising(on){ad=on;emit(on?'player:adStart':'player:adEnd');},permission(on){blockPlay=on;},nativePause(){paused=true;emit('player:changeState',{state:'pause'});},nativeSeek(value){time=value;emit('player:currentTime',{time});}};
 addEventListener('message',event=>{let m;try{m=JSON.parse(event.data);}catch{return;}
- if(m.type==='player:play'&&!ad&&!blockPlay){paused=false;emit('player:changeState',{state:'playing'});}
- if(m.type==='player:pause'&&!ad){paused=true;emit('player:changeState',{state:'paused'});}
+ if(m.type==='player:play'&&!ad&&!blockPlay){if(!loaded){loaded=true;emit('player:durationChange',{duration:2669});}paused=false;emit('player:changeState',{state:'playing'});}
+ if(m.type==='player:pause'&&!ad){paused=true;emit('player:changeState',{state:'pause'});}
  if(m.type==='player:setCurrentTime'&&!ad){time=m.data.time;emit('player:currentTime',{time});}
  if(m.type==='player:changeQuality')quality=m.data.quality;
 });
-setTimeout(()=>{emit('player:ready');emit('player:durationChange',{duration:2669});emit('player:qualityList',{list:[360,720,1080]});emit('player:currentTime',{time});},100);
+setTimeout(()=>{emit('player:ready');if(!deferTimeline){loaded=true;emit('player:durationChange',{duration:2669});}emit('player:qualityList',{list:[360,720,1080]});emit('player:currentTime',{time});},100);
 setInterval(()=>{if(!paused&&!ad)time+=.25;emit('player:currentTime',{time});},250);
 </script></body></html>`;
 async function viewer(name, viewport = { width: 1280, height: 800 }) {
@@ -36,7 +37,7 @@ async function viewer(name, viewport = { width: 1280, height: 800 }) {
 	page.on('websocket', (socket) => socket.on('framereceived', ({ payload }) => {
 		try { const m = JSON.parse(String(payload)); if (m.type === 'state') trace.push({ viewer: name, ...m }); } catch {}
 	}));
-	await page.route('https://rutube.ru/play/embed/**', (route) => route.fulfill({ contentType: 'text/html; charset=utf-8', body: fixture }));
+	await page.route('https://rutube.ru/play/embed/**', (route) => route.fulfill({ contentType: 'text/html; charset=utf-8', body: name === 'guest' ? fixture.replace('const deferTimeline=false;', 'const deferTimeline=true;') : fixture }));
 	if (viewport.width < 500) await page.addInitScript(() => {
 		HTMLElement.prototype.requestFullscreen = async () => { throw new Error('Test mobile fallback'); };
 		window.__testViewportHeight = innerHeight;
@@ -94,6 +95,7 @@ try {
 	await guest.getByLabel('Как вас зовут?').fill('Друг с телефона');
 	await guest.getByRole('button', { name: 'Присоединиться к просмотру' }).click();
 	await guest.waitForURL(new RegExp(`/rutube/${first}/watch\\?room=`));
+	await guest.getByRole('button', { name: 'Загрузить видео', exact: true }).click();
 	await guest.getByLabel('Качество RUTUBE').waitFor();
 	await host.getByRole('button', { name: 'Воспроизвести', exact: true }).click();
 	await aligned(host, guest, 'join-and-play');
@@ -159,6 +161,7 @@ try {
 	await host.getByLabel('Ссылка RUTUBE для комнаты').fill(`https://rutube.ru/video/${second}/`);
 	await host.getByRole('button', { name: 'Включить всем', exact: true }).click();
 	await Promise.all([host.waitForURL(new RegExp(`/rutube/${second}/watch`)), guest.waitForURL(new RegExp(`/rutube/${second}/watch`))]);
+	await guest.getByRole('button', { name: 'Загрузить видео', exact: true }).click();
 	await Promise.all([host.getByLabel('Качество RUTUBE').waitFor(), guest.getByLabel('Качество RUTUBE').waitFor()]);
 	await aligned(host, guest, 'host-changes-video');
 	await roomStarted();

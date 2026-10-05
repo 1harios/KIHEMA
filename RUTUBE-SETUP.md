@@ -41,6 +41,7 @@ npm run check
 node --test scripts/tests/*.test.mjs
 python scripts/tests/party-server.test.py
 node scripts/tests/browser-rutube.mjs http://127.0.0.1:5190
+node scripts/tests/browser-rutube-real-party.mjs https://kihema.vercel.app https://kihema.93-123-84-128.sslip.io
 ```
 
 Последний тест использует два настоящих браузера и настоящий сервер комнат,

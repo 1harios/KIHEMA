@@ -1,0 +1,27 @@
+{
+  "action": "set",
+  "config": {
+    "GSTVersion": 1.28,
+    "GSTPath": "",
+    "Source": "stream",
+    "MaxTasks": 4,
+    "InactiveMinutes": 2,
+    "AACBitrateKbps": 192,
+    "AACChannels": 0,
+    "AACSamplerate": 0,
+    "SegmentSeconds": 6,
+    "SegmentDiff": 20,
+    "Subtitles": true,
+    "TranscodeH264": false,
+    "TranscodeH265": true,
+    "TranscodeAV1": true,
+    "TranscodeVP9": true,
+    "TranscodeVP8": true,
+    "TranscodeAVI": true,
+    "HDRToSDR": false,
+    "HardwareAcceleration": false,
+    "UseGPU": false,
+    "X264Ultrafast": true,
+    "VideoBitrate": 4000
+  }
+}

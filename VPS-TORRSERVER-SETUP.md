@@ -1,150 +1,71 @@
-# Настройка TorrServer на VPS (IP: 213.165.34.107)
+# KIHEMA: сервер воспроизведения на VPS
 
-## Шаг 1: Подключение к VPS
+Сайт и резолвер работают на Vercel; видео и комнаты — на VPS `93.123.84.128`.
+Постоянный HTTPS-адрес: `https://video.93-123-84-128.sslip.io`.
+Caddy автоматически обновляет сертификат. Старый VPS и временные туннели не используются.
+
+## Production-переменные Vercel
+
+```dotenv
+TORRSERVER_ENABLED=true
+TORRSERVER_URL=https://video.93-123-84-128.sslip.io
+TORRSERVER_API_KEY=<закрытый ключ из /etc/kihema/caddy.env>
+PARTY_SERVER_URL=https://video.93-123-84-128.sslip.io/party
+```
+
+При постоянном адресе TORRSERVER_DISCOVERY_URL и PARTY_DISCOVERY_URL не нужны.
+После обновления переменных требуется новый deployment.
+Ключ сохраняется как sensitive-переменная и передаётся только сервером в заголовке
+X-Kihema-Key. В браузер и URL видео он не попадает. Пароли/ключи не храните в Git.
+
+## Установленные службы
+
+- kihema-torrserver: официальный TorrServer-gst MatriX.145.2, GStreamer 1.28.
+- kihema-party: существующий Python-сервер комнат, websockets 15.0.1.
+- caddy: HTTPS, CORS и закрытое управление API.
+
+Службы работают от непривилегированных системных пользователей, включены в автозапуск
+и автоматически перезапускаются при сбоях. Шаблоны находятся в deploy/vps/.
+
+Внутренние порты 8090 (TorrServer) и 8092 (комнаты) слушают только 127.0.0.1.
+Публичны 80/443 для HTTPS и 32000 TCP/UDP для пиров, SSH — 22.
+
+## Файлы на VPS
+
+```text
+/opt/kihema/bin/TorrServer-gst
+/var/lib/kihema/torrserver
+/opt/kihema/party-server.py
+/opt/kihema/venv
+/etc/caddy/Caddyfile
+/etc/kihema/caddy.env                  (0600, закрытый ключ)
+/etc/systemd/system/caddy.service.d/kihema.conf
+/etc/caddy/Caddyfile.kihema-backup     (предыдущая конфигурация)
+```
+
+## Проверка и диагностика
 
 ```bash
-ssh root@213.165.34.107
-# Пароль: YS7KX5d91uKt
+systemctl is-active kihema-torrserver kihema-party caddy
+systemctl is-enabled kihema-torrserver kihema-party caddy
+curl -fsS http://127.0.0.1:8090/echo
+curl -fsS http://127.0.0.1:8090/gst/echo
+journalctl -u kihema-torrserver -n 80 --no-pager
+journalctl -u caddy -n 40 --no-pager
 ```
 
-## Шаг 2: Проверка и запуск TorrServer
-
-### Вариант A: Если TorrServer уже установлен
+Проверки сайта:
 
 ```bash
-# Проверить статус
-systemctl status torrserver-gst
-
-# Запустить если остановлен
-systemctl start torrserver-gst
-
-# Включить автозагрузку
-systemctl enable torrserver-gst
-
-# Открыть порт в firewall
-ufw allow 8080/tcp
-
-# Проверить что работает
-curl http://127.0.0.1:8080/status
+node --test scripts/tests/playback-server.test.mjs
+node scripts/tests/playback-smoke.mjs https://kihema.vercel.app movie 550
 ```
 
-### Вариант B: Установка TorrServer с нуля
+Первый тест проверяет различие 404 и 503, приватность API-ключа и переход к
+следующему кандидату. Smoke-тест запускает настоящий поиск/подготовку потока
+и проверяет HLS-манифест, CORS, init-файл и видеосегмент.
 
-Вам нужно скачать и установить **TorrServer MatriX.143**:
-
-**Способ 1 - Прямой запуск:**
-```bash
-cd /opt
-wget https://github.com/MatriX.143/TorrentStream/releases/latest/download/TorrServer-Matrix.143-gst.tar.gz
-tar -xzf TorrServer-Matrix.143-gst.tar.gz
-chmod +x TorrServer-Matrix.143-gst
-
-# Запуск в фоне
-./TorrServer-Matrix.143-gst --listen 0.0.0.0:8080 &
-```
-
-**Способ 2 - Docker:**
-```bash
-docker run -d \
-  --name torrserver \
-  --restart always \
-  -p 8080:8080 \
-  matrixtv/torrservice:gst
-```
-
-## Шаг 3: Настройка cloudflared tunnel (для публичного доступа)
-
-Если хотите доступ через HTTPS без открытия портов:
-
-```bash
-# Установка cloudflared
-curl -L https://github.com/cloudflare/cloudflared/releases/latest/download/cloudflared-linux-amd64.deb -o cloudflared.deb
-dpkg -i cloudflared.deb
-
-# Авторизация (откроет браузер)
-cloudflared tunnel login
-
-# Создание туннеля
-cloudflared tunnel create kiema-torr
-
-# Автоматическое создание временного URL (самый простой способ)
-cloudflared tunnel --url my-torrserver-kiema
-
-# ВАЖНО: Скопируйте URL который выведется! Например:
-# https://my-torrserver-kiema-abcd1234.trycloudflare.com
-```
-
-**Сохраните этот URL!** Вам понадобится для шага 4.
-
-## Шаг 4: Настройка переменных окружения в Vercel
-
-1. Зайдите на [Vercel Dashboard](https://vercel.com/dashboard)
-2. Проект: KIHEMA
-3. Settings → Environment Variables
-4. Добавьте новую переменную:
-
-```
-NAME: TORRSERVER_URL
-VALUE: https://ваш-url-cloudflared.trycloudflare.com
-```
-
-Или если используете прямой IP:
-
-```
-NAME: TORRSERVER_URL
-VALUE: http://213.165.34.107:8080
-```
-
-5. Нажмите "Save"
-
-## Шаг 5: Тестирование
-
-После деплоя на Vercel протестируйте:
-
-```bash
-# С SSH на VPS
-curl -X POST "http://127.0.0.1:8080/torrents" \
-  -H "Content-Type: application/json" \
-  -d '{"action":"add","link":"magnet:?xt=urn:btih:EXAMPLE&dn=test","title":"test"}'
-
-# Ответ должен быть: {"hash":"abc123..."} или {"error":"..."}
-```
-
-## Решение проблем
-
-### Проблемы с подключением из Vercel
-
-Если видите ошибку `fetch failed`:
-
-1. Проверьте что cloudflared запущен:
-   ```bash
-   ps aux | grep cloudflared
-   ```
-
-2. Перезапустите туннель:
-   ```bash
-   pkill cloudflared
-   cloudflared tunnel --url my-torrserver-kiema
-   ```
-
-3. Убедитесь что порт 8080 открыт:
-   ```bash
-   ufw status
-   # Должен быть: 8080 ALLOW
-   ```
-
-### Торренты не находятся
-
-Если торренты не находятся при поиске:
-- Увеличьте время ожидания в коде (сейчас стоит 120 секунд)
-- Проверьте логи на Vercel: последние Deployments → Logs
-
-## Итоговая конфигурация
-
-После настройки у вас должно быть:
-- ✅ TorrServer запущен на VPS (порт 8080)
-- ✅ cloudflared tunnel активен
-- ✅ Переменная `TORRSERVER_URL` в Vercel настроена
-- ✅ Деплой на Vercel завершён успешно
-
-Проверьте сайт — торренты должны работать! 🎉
+На VPS один CPU и 2 ГБ RAM. Кеш ограничен 256 МиБ, GStreamer — четырьмя задачами.
+H.264 по возможности перепаковывается без перекодирования; другие кодеки
+перекодируются быстрым пресетом. Для старта по умолчанию предпочтительны AVC
+и умеренное разрешение. Наличие фильма в TMDB не гарантирует живую раздачу.

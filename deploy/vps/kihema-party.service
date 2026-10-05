@@ -1,0 +1,21 @@
+[Unit]
+Description=KIHEMA watch party WebSocket
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=kihema
+Group=kihema
+WorkingDirectory=/opt/kihema
+ExecStart=/opt/kihema/venv/bin/python /opt/kihema/party-server.py
+Restart=always
+RestartSec=3
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectSystem=strict
+ProtectHome=true
+MemoryMax=128M
+
+[Install]
+WantedBy=multi-user.target

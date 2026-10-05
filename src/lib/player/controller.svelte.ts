@@ -271,7 +271,7 @@ export class PlayerController {
 			// как только сервис оживёт, фильм начнётся без участия пользователя.
 			// «Этого тайтла нет в CDN» — детерминированный отказ, ретрай бессмыслен.
 			const transient =
-				/временно не ответили|Сервер ответил 5\d\d|не отдаёт HLS-манифест/.test(msg);
+				/временно не ответили|временно недоступен|Сервер ответил 5\d\d|не отдаёт HLS-манифест/.test(msg);
 			if (transient && this.retryCount < PlayerController.MAX_AUTO_RETRIES) {
 				this.retryCount += 1;
 				this.status = 'loading';

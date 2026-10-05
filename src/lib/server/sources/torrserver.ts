@@ -1,15 +1,59 @@
 /**
- * Торрент-источник: Jackett + Torrentio (поиск раздач) и TorrServer MatriX.143 (стриминг).
+ * Торрент-источник: Jackett + Torrentio (поиск раздач) и TorrServer GST (стриминг).
  *
  * Основной источник воспроизведения. Цепочка:
  *   1. Jackett ищет по названию из TMDB, Torrentio (Stremio-аддон) — по IMDb ID;
  *   2. лучшая раздача (сиды + размер) добавляется в TorrServer;
- *   3. gst-сборка TorrServer транскодирует файл в H.264/AAC HLS через cloudflared tunnel;
+ *   3. gst-сборка TorrServer отдаёт H.264/AAC HLS через HTTPS-прокси;
  *   4. браузер играет master.m3u8 напрямую — CORS у TorrServer открыт.
  */
 
 import { config, getTorrentServerUrl, tmdb } from '$lib/server/config';
 import type { MediaType, PlaybackSource, ScrapeTarget, TorrentOption, Translation } from '$lib/types';
+
+/** Сетевой сбой не означает, что фильм отсутствует в поиске. */
+export class TorrentServerUnavailableError extends Error {
+	constructor(detail: string) {
+		super('Сервер воспроизведения временно недоступен. Попробуйте позже.');
+		this.name = 'TorrentServerUnavailableError';
+		console.error('[torrents] сервер воспроизведения недоступен:', detail);
+	}
+}
+
+/** Закрытый ключ используется только в серверных запросах управления. */
+async function fetchTorrentServer(
+	url: string,
+	init: RequestInit = {},
+	allowWarmupErrors = false
+): Promise<Response> {
+	const headers = new Headers(init.headers);
+	if (config.torrents.apiKey) headers.set('X-Kihema-Key', config.torrents.apiKey);
+	let res: Response;
+	try {
+		res = await fetch(url, { ...init, headers, redirect: 'error' });
+	} catch (e) {
+		throw new TorrentServerUnavailableError(e instanceof Error ? e.message : String(e));
+	}
+	if (res.status === 401 || res.status === 403 || (!allowWarmupErrors && res.status >= 500)) {
+		throw new TorrentServerUnavailableError(`HTTP ${res.status} ${new URL(url).pathname}`);
+	}
+	return res;
+}
+
+async function assertTorrentServerAvailable(): Promise<void> {
+	try {
+		const base = await getTorrentServerUrl();
+		const res = await fetchTorrentServer(`${base}/gst/settings`, {
+			signal: AbortSignal.timeout(5_000)
+		});
+		if (!res.ok || !(await res.json()).built_in) {
+			throw new TorrentServerUnavailableError('HLS/GStreamer build is not available');
+		}
+	} catch (e) {
+		if (e instanceof TorrentServerUnavailableError) throw e;
+		throw new TorrentServerUnavailableError(e instanceof Error ? e.message : String(e));
+	}
+}
 
 interface JackettResult {
 	Title?: string;
@@ -152,6 +196,12 @@ function rankedTorrents(results: JackettResult[], target: ScrapeTarget): Jackett
 		if (cyrillic && seeds > 0) score += 120;
 		else if (!cyrillic && /\b(ita|ger|fre|fra|spa|esp|pol)\b/i.test(name)) score -= 80;
 
+		// По умолчанию нужен быстрый совместимый поток, а не самый тяжёлый
+		// REMUX. Все варианты остаются в меню для ручного выбора качества.
+		if (/\b(avc|h[ ._-]?264|x264)\b/i.test(name)) score += 35;
+		if (/\b(hevc|h[ ._-]?265|x265|av1)\b/i.test(name)) score -= 60;
+		if (/\b(2160p|4k|uhd|hdr|dv)\b/i.test(name)) score -= 50;
+
 		if (target.type === 'show') {
 			const s = target.season ?? 1;
 			const e = target.episode ?? 1;
@@ -167,11 +217,10 @@ function rankedTorrents(results: JackettResult[], target: ScrapeTarget): Jackett
 			// У фильмов без расширения в названии внутри может оказаться что угодно.
 			score -= 15;
 		}
-		// gst-эндпоинт TorrServer транскодирует только Matroska/WebM: раздача с
-		// AVI/MP4 даст 502 «unsupported container» на любом запросе манифеста.
+		// GST поддерживает Matroska/WebM и AVI; прочие контейнеры не выбираем.
 		// Расширение в названии бывает не всегда, поэтому это лишь порядок —
 		// окончательный брак по контейнеру ставит pickVideoFile.
-		if (/\.(avi|mp4|m4v|mov|ts)$/i.test(name)) score -= 200;
+		if (/\.(mp4|m4v|mov|ts)$/i.test(name)) score -= 200;
 		else if (/\.(mkv|webm)$/i.test(name)) score += 25;
 		return { r, score };
 	});
@@ -289,9 +338,8 @@ function parseFiles(data?: string): TorrFile[] {
 
 /** Имя файла в раздаче может не совпадать с названием раздачи. */
 function pickVideoFile(files: TorrFile[], target: ScrapeTarget): TorrFile | null {
-	// gst-сборка TorrServer транскодирует только Matroska/WebM — прочие
-	// контейнеры (AVI/MP4/TS) дают 502 «unsupported container» и не играбельны.
-	const videos = files.filter((f) => /\.(mkv|webm)$/i.test(f.path));
+	// MatriX.145.2 также поддерживает AVI при TranscodeAVI=true на VPS.
+	const videos = files.filter((f) => /\.(mkv|webm|avi)$/i.test(f.path));
 	if (!videos.length) return null;
 
 	if (target.type === 'show') {
@@ -333,7 +381,7 @@ const LANG_NAMES: Record<string, string> = {
 async function probeAudioTracks(hash: string, fileId: number): Promise<ProbeTrack[] | null> {
 	try {
 		const base = await getTorrentServerUrl();
-		const res = await fetch(
+		const res = await fetchTorrentServer(
 			`${base}/gst/${hash}/probe?index=${fileId}`,
 			{ signal: AbortSignal.timeout(8_000) }
 		);
@@ -357,14 +405,15 @@ async function probeAudioTracks(hash: string, fileId: number): Promise<ProbeTrac
  */
 async function prewarmManifest(
 	url: () => string,
-	budgetMs = 90_000 // Увеличено с 12s до 90s для холодного старта TorrServer
+	budgetMs = 25_000
 ): Promise<{ ok: true } | { ok: false; reason: string }> {
 	const startedAt = Date.now();
 	for (;;) {
 		try {
-			const res = await fetch(url(), { signal: AbortSignal.timeout(5_000) });
+			const res = await fetchTorrentServer(url(), { signal: AbortSignal.timeout(8_000) }, true);
 			const text = await res.text().catch(() => '');
-			if (res.ok) return { ok: true };
+			if (res.ok && text.trimStart().startsWith('#EXTM3U')) return { ok: true };
+			if (res.ok) return { ok: false, reason: 'ответ не является HLS-манифестом' };
 			const definitive =
 				(res.status >= 400 && res.status < 500) ||
 				/unsupported (container|video codec)/i.test(text);
@@ -393,7 +442,7 @@ async function findLocalEntry(
 ): Promise<{ hash: string; title: string; data?: string } | null> {
 	try {
 		const base = await getTorrentServerUrl();
-		const res = await fetch(`${base}/torrents`, {
+		const res = await fetchTorrentServer(`${base}/torrents`, {
 			method: 'POST',
 			headers: { 'content-type': 'application/json' },
 			body: JSON.stringify({ action: 'list' }),
@@ -406,7 +455,8 @@ async function findLocalEntry(
 		return entry
 			? { hash: entry.hash!.toLowerCase(), title: entry.title ?? '', data: entry.data }
 			: null;
-	} catch {
+	} catch (e) {
+		if (e instanceof TorrentServerUnavailableError) throw e;
 		return null;
 	}
 }
@@ -432,7 +482,7 @@ async function localLibrarySource(target: ScrapeTarget): Promise<PlaybackSource 
 async function sourceByHash(hash: string, target: ScrapeTarget): Promise<PlaybackSource | null> {
 	try {
 		const base = await getTorrentServerUrl();
-		const res = await fetch(`${base}/torrents`, {
+		const res = await fetchTorrentServer(`${base}/torrents`, {
 			method: 'POST',
 			headers: { 'content-type': 'application/json' },
 			body: JSON.stringify({ action: 'list' }),
@@ -445,7 +495,8 @@ async function sourceByHash(hash: string, target: ScrapeTarget): Promise<Playbac
 		const file = pickVideoFile(parseFiles(entry.data), target);
 		if (!file) return null;
 		return buildSource(hash.toLowerCase(), file, target);
-	} catch {
+	} catch (e) {
+		if (e instanceof TorrentServerUnavailableError) throw e;
 		return null;
 	}
 }
@@ -454,7 +505,7 @@ async function sourceByHash(hash: string, target: ScrapeTarget): Promise<Playbac
 async function fetchTorrentList(): Promise<TorrListEntry[]> {
 	try {
 		const base = await getTorrentServerUrl();
-		const res = await fetch(`${base}/torrents`, {
+		const res = await fetchTorrentServer(`${base}/torrents`, {
 			method: 'POST',
 			headers: { 'content-type': 'application/json' },
 			body: JSON.stringify({ action: 'list' }),
@@ -462,7 +513,8 @@ async function fetchTorrentList(): Promise<TorrListEntry[]> {
 		});
 		if (!res.ok) return [];
 		return (await res.json()) as TorrListEntry[];
-	} catch {
+	} catch (e) {
+		if (e instanceof TorrentServerUnavailableError) throw e;
 		return [];
 	}
 }
@@ -478,7 +530,7 @@ async function addCandidate(cand: JackettResult, fallbackTitle: string): Promise
 	}
 	try {
 		const base = await getTorrentServerUrl();
-		const res = await fetch(`${base}/torrents`, {
+		const res = await fetchTorrentServer(`${base}/torrents`, {
 			method: 'POST',
 			headers: { 'content-type': 'application/json', 'user-agent': UA },
 			body: JSON.stringify({
@@ -492,6 +544,7 @@ async function addCandidate(cand: JackettResult, fallbackTitle: string): Promise
 		if (!res.ok) return null;
 		return resultHash(cand);
 	} catch (error) {
+		if (error instanceof TorrentServerUnavailableError) throw error;
 		console.warn(
 			'[torrents] не удалось добавить раздачу:',
 			error instanceof Error ? error.message : error
@@ -524,7 +577,7 @@ async function removeTorrents(hashes: string[], existing: Set<string>): Promise<
 		[...new Set(hashes)]
 			.filter((h) => h && !existing.has(h))
 			.map((h) =>
-				fetch(`${base}/torrents`, {
+				fetchTorrentServer(`${base}/torrents`, {
 					method: 'POST',
 					headers: { 'content-type': 'application/json' },
 					body: JSON.stringify({ action: 'rem', hash: h }),
@@ -543,7 +596,7 @@ async function markLocalLibrary(hash: string, target: ScrapeTarget, title: strin
 	if (title.startsWith(localMark(target))) return;
 	try {
 		const base = await getTorrentServerUrl();
-		const res = await fetch(`${base}/torrents`, {
+		const res = await fetchTorrentServer(`${base}/torrents`, {
 			method: 'POST',
 			headers: { 'content-type': 'application/json' },
 			body: JSON.stringify({
@@ -746,6 +799,10 @@ export async function torrentPlaybackSource(
 		return null;
 	}
 
+	// Проверяем инфраструктуру до поиска и добавления раздач: иначе каждый
+	// сетевой отказ скрывался за 404 «тайтл не найден» после долгого ожидания.
+	await assertTorrentServerAvailable();
+
 	console.log(`[torrents] searching for ${target.type} ${target.tmdbId}...`);
 
 	// Аниме со сквозной нумерацией («Bleach - 001»): считаем сквозной номер
@@ -775,13 +832,14 @@ export async function torrentPlaybackSource(
 		return tryPreparedCandidate(hash, target);
 	}
 
-	// Локальная библиотека быстрее трекеров, но поиск кешируется и нужен меню —
-	// запускаем оба пути параллельно, локальную раздачу берём первой.
-	const [local, found] = await Promise.all([
-		localLibrarySource(target),
-		searchCandidates(target)
-	]);
+	// Поиск нужен меню, но не должен задерживать уже готовую локальную раздачу.
+	const searchPromise = searchCandidates(target).catch((e) => {
+		console.warn('[torrents] фоновый поиск не удался:', e instanceof Error ? e.message : e);
+		return null;
+	});
+	const local = await localLibrarySource(target);
 	if (local) return local;
+	const found = await searchPromise;
 	if (!found || !found.candidates.length) {
 		console.warn(`[torrents] no candidates found for tmdb ${target.tmdbId}`);
 		return null;
@@ -808,7 +866,9 @@ export async function torrentPlaybackSource(
 
 	const ready: { hash: string; file: TorrFile; title: string }[] = [];
 	const failed: string[] = [];
-	const deadline = Date.now() + 12_000;
+	const order = new Map(added.map((a) => [a.hash ?? '', a.i]));
+	const metadataDeadline = Date.now() + 30_000;
+	const playbackDeadline = Date.now() + 120_000;
 	for (;;) {
 		const list = await fetchTorrentList();
 		for (const hash of [...pending]) {
@@ -832,31 +892,32 @@ export async function torrentPlaybackSource(
 				failed.push(hash);
 			}
 		}
-		if (ready.length || !pending.size || Date.now() > deadline) break;
-		await new Promise((r) => setTimeout(r, 2_500));
-	}
-
-	// Прогрев gst — строго по очереди (транскодер один), но в порядке рейтинга.
-	const order = new Map(added.map((a) => [a.hash ?? '', a.i]));
-	ready.sort((a, b) => (order.get(a.hash) ?? 99) - (order.get(b.hash) ?? 99));
-	console.log(
-		`[torrents] метаданные: ${ready.length} готово, ${pending.size} не дождались, ${failed.length} мертвы`
-	);
-
-	for (const { hash, file, title } of ready) {
-		const source = await buildSource(hash, file, target);
-		if (source) {
-			await markLocalLibrary(hash, target, title || hash.substring(0, 8));
-			const ours = [...failed, ...pending, ...ready.map((r) => r.hash)].filter(
-				(h) => h !== hash
-			);
-			await removeTorrents(ours, before);
-			return source;
+		ready.sort((a, b) => (order.get(a.hash) ?? 99) - (order.get(b.hash) ?? 99));
+		const preferredReady = ready[0] && order.get(ready[0].hash) === 0;
+		if (ready.length && (preferredReady || ready.length >= 2 || !pending.size || Date.now() >= metadataDeadline)) {
+			const { hash, file, title } = ready.shift()!;
+			const budget = Math.min(25_000, playbackDeadline - Date.now());
+			if (budget <= 0) {
+				failed.push(hash);
+				break;
+			}
+			const source = await buildSource(hash, file, target, budget);
+			if (source) {
+				await markLocalLibrary(hash, target, title || hash.substring(0, 8));
+				await removeTorrents([...failed, ...pending, ...ready.map((r) => r.hash)], before);
+				return source;
+			}
+			failed.push(hash);
+			// Пока первый кандидат прогревался, другие могли получить метаданные.
+			// Не выбрасываем их: возвращаемся к списку и пробуем следующий.
+			continue;
 		}
+		if ((!pending.size && !ready.length) || Date.now() >= playbackDeadline || (!ready.length && Date.now() >= metadataDeadline)) break;
+		await new Promise((r) => setTimeout(r, 2_000));
 	}
 
-	console.warn(`[torrents] ${ready.length} раздач с метаданными не дали поток`);
-	await removeTorrents([...failed, ...pending], before);
+	console.warn(`[torrents] кандидаты не дали поток: ${failed.length} отказов, ${pending.size} без метаданных`);
+	await removeTorrents([...failed, ...pending, ...ready.map((r) => r.hash)], before);
 	return null;
 }
 
@@ -864,7 +925,8 @@ export async function torrentPlaybackSource(
 async function buildSource(
 	hash: string,
 	file: TorrFile,
-	target: ScrapeTarget
+	target: ScrapeTarget,
+	warmupBudgetMs = 25_000
 ): Promise<PlaybackSource | null> {
 	const epKey =
 		target.type === 'show'
@@ -882,13 +944,7 @@ async function buildSource(
 	// секунд), а у ошибки нет CORS-заголовков — браузер видит глухой
 	// net::ERR_FAILED. Поэтому ждём настоящий 200 до конца бюджета и отдаём
 	// браузеру только заведомо живой манифест.
-	// Увеличиваем timeout до 60 сек на прогрев.
-	const warmed = await Promise.race([
-		prewarmManifest(() => urlFor(0)),
-		new Promise<{ ok: false; reason: string }>((_, reject) =>
-			setTimeout(() => reject(new Error('[torrents] manifest warmup timeout')), 60_000)
-		)
-	]);
+	const warmed = await prewarmManifest(() => urlFor(0), warmupBudgetMs);
 
 	if (!warmed.ok) {
 		console.warn(`[torrents] ${hash}: gst не отдал манифест (${warmed.reason})`);
@@ -900,15 +956,7 @@ async function buildSource(
 	// Каждая аудиодорожка MKV — отдельная «озвучка»: у gst свой поток на
 	// дорожку через audio=N. Манифест к этому моменту прогрет, но discoverer
 	// всё равно может не успеть — тогда остаёмся с дорожкой по умолчанию.
-	const audios = await Promise.race([
-		probeAudioTracks(hash, file.id),
-		new Promise<any[]>(() =>
-			setTimeout(() => {
-				console.warn(`[torrents] ${hash}: audio tracks timeout, using default track`);
-				return [];
-			}, 10_000)
-		)
-	]);
+	const audios = await probeAudioTracks(hash, file.id);
 
 	const trackCount = audios?.length ?? 1;
 	console.log(`[torrents] ${hash}: found ${trackCount} audio track(s)`);
@@ -945,4 +993,3 @@ async function buildSource(
 
 /** Включены ли торренты — от этого зависит «играбельность» каталога. */
 export const torrentsEnabled = (): boolean => config.torrents.enabled;
-

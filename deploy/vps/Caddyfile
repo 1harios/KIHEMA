@@ -1,0 +1,38 @@
+video.93-123-84-128.sslip.io {
+	@preflight method OPTIONS
+	handle @preflight {
+		header Access-Control-Allow-Origin "https://kihema.vercel.app"
+		header Access-Control-Allow-Methods "GET, HEAD, OPTIONS"
+		header Access-Control-Allow-Headers "Range, Content-Type"
+		header Access-Control-Max-Age "86400"
+		respond "" 204
+	}
+
+	handle /tunnel.txt {
+		header Cache-Control "no-store"
+		respond "https://video.93-123-84-128.sslip.io" 200
+	}
+	handle /party-tunnel.txt {
+		header Cache-Control "no-store"
+		respond "https://video.93-123-84-128.sslip.io/party" 200
+	}
+	handle /party {
+		reverse_proxy 127.0.0.1:8092
+	}
+
+	# Only media is public. Administration requires a server-side secret;
+	# the browser never receives this key or access to the TorrServer UI.
+	@media path_regexp media ^/gst/[a-zA-Z0-9]{32,40}/(master\.m3u8|video\.m3u8|init\.mp4|seg/[^/]+|subs/[0-9]+\.m3u8|subs/[0-9]+/[^/]+\.vtt|heartbeat)$
+	handle @media {
+		reverse_proxy 127.0.0.1:8090 {
+			header_down Access-Control-Allow-Origin "https://kihema.vercel.app"
+			header_down Access-Control-Expose-Headers "Content-Length, Content-Range, Accept-Ranges"
+		}
+	}
+
+	@api header X-Kihema-Key {$KIHEMA_API_KEY}
+	handle @api {
+		reverse_proxy 127.0.0.1:8090
+	}
+	respond "Not found" 404
+}

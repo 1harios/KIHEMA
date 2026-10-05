@@ -1,10 +1,10 @@
 import { error, json, type RequestHandler } from '@sveltejs/kit';
 import { archivePlaybackSource, findArchiveFilm } from '$lib/server/archive';
-import { config as siteConfig, getTorrentServerUrl, jellyfinAnon, libraryIndex } from '$lib/server/config';
+import { config as siteConfig, jellyfinAnon, libraryIndex } from '$lib/server/config';
 import { DEMO_SEGMENTS, DEMO_STREAMS, DEMO_TRANSLATIONS } from '$lib/server/demo-data';
 import { getIntroDbSegments, mergeMediaSegments } from '$lib/server/introdb';
 import { readSession } from '$lib/server/session';
-import { torrentPlaybackSource } from '$lib/server/sources/torrserver';
+import { torrentPlaybackSource, TorrentServerUnavailableError } from '$lib/server/sources/torrserver';
 import type { MediaType, PlaybackProvider, PlaybackSource } from '$lib/types';
 
 /**
@@ -13,7 +13,7 @@ import type { MediaType, PlaybackProvider, PlaybackSource } from '$lib/types';
  * Порядок источников: демо → архив (открытый контент) → собственная медиатека
  * Jellyfin (если тайтл в индексе и пользователь вошёл) → локальный TorrServer
  * (торренты, при TORRSERVER_ENABLED=true). Торрент-источник основной — все
- * потоки транслируются через cloudflared tunnel от TorrServer MatriX.143.
+ * потоки транслируются через постоянный HTTPS-адрес собственного VPS.
  *
  * О токене: медиа-URL (HLS-сегменты, субтитры, тайлы) уходят в браузер с api_key
  * в query — заголовок туда не поставить. Это тот же подход, что в штатном
@@ -41,6 +41,7 @@ export const POST: RequestHandler = async ({ request, cookies }) => {
 		error(400, 'Для сериала нужны season и episode');
 	}
 	const excluded = new Set(body.exclude ?? []);
+	let torrentFailed = false;
 
 	/* ------------------------------ демо-режим ------------------------------ */
 	if (siteConfig.demoMode) {
@@ -137,85 +138,50 @@ export const POST: RequestHandler = async ({ request, cookies }) => {
 				'[playback] выбранная раздача не завелась:',
 				e instanceof Error ? e.message : e
 			);
+			if (e instanceof TorrentServerUnavailableError) error(503, e.message);
 		}
 		error(404, 'Выбранная раздача не запустилась — попробуйте другую');
 	}
 
 	/* ------------------------------- торренты -------------------------------- */
-	// Torrenents основной источник — торренты транслируются через TorrServer
-	// MatriX.143 с cloudflared tunnel.
+	// В браузер попадают только медиа-URL. Ключ управления VPS остаётся на сервере.
 	if (siteConfig.torrents.enabled && !excluded.has('torrent')) {
+		let timeout: ReturnType<typeof setTimeout> | undefined;
 		try {
 			console.log('[playback] пробуем торрент-источник для', body.type, body.tmdbId);
-			
-			const searchPromise = (async () => {
-				// Проверка что config загружен корректно
-				if (!siteConfig || !siteConfig.torrents) {
-					throw new Error('TorrServer config not loaded - check TORRSERVER_URL env var');
-				}
-				
-				console.log(`[playback] torrenents: start search ${body.season ? `S${body.season}E${body.episode}` : 'movie'}`);
-				console.log(`[playback] TorrServer URL: ${await getTorrentServerUrl()}`);
-				
-				// Запускаем поиск с подробным логированием каждого шага
-				const result = await Promise.race([
-					torrentPlaybackSource({
-						type: body.type,
-						tmdbId: body.tmdbId,
-						season: body.season,
-						episode: body.episode
-					}).then(source => {
-						if (!source) {
-							console.warn(`[playback] torrenents: no source found for tmdb ${body.tmdbId}`);
-						} else {
-							console.log(`[playback] torrenents: SUCCESS - ${source.streamUrl.substring(0, 50)}...`);
-						}
-						return source;
-					}),
-					new Promise<null>((_, reject) => 
-						setTimeout(() => reject(new Error('[playback] torrenents timeout after 120s')), 120_000)
-					)
-				]);
-				
-				return result;
-			})();
-			
-			const torrent = await searchPromise;
+			const torrent = await Promise.race([
+				torrentPlaybackSource({
+					type: body.type,
+					tmdbId: body.tmdbId,
+					season: body.season,
+					episode: body.episode
+				}),
+				new Promise<never>((_, reject) => {
+					timeout = setTimeout(() => reject(new Error('Torrent search timed out')), 180_000);
+				})
+			]);
 			if (torrent) {
 				return json(await withIntroSegments({ ...torrent, provider: 'torrent' }));
 			}
 		} catch (e) {
-			const errorMsg = e instanceof Error ? e.message : String(e);
-			console.error('[playback] torrenents error or timeout:', errorMsg);
-			
-			if (/environment|env var|not set/i.test(errorMsg)) {
-				console.error('');
-				console.error('IMPORTANT: TorrServer URL is NOT configured on Vercel!');
-				console.error('');
-				console.error('To fix this error:');
-				console.error('1. Go to Vercel Dashboard → KIHEMA → Settings → Environment Variables');
-				console.error('2. Add new variable:');
-				console.error('   NAME: TORRSERVER_URL');
-				console.error('   VALUE: https://your-vps-domain.com OR http://vps-ip:8080');
-				console.error('3. Redeploy the application');
-				console.error('');
-				console.error('If you want to use local/dev mode, set:');
-				console.error('   TORRSERVER_URL=http://127.0.0.1:8080');
-				console.error('');
-			}
+			torrentFailed = true;
+			console.error('[playback] ошибка торрент-сервера:', e instanceof Error ? e.message : e);
+		} finally {
+			if (timeout) clearTimeout(timeout);
 		}
 	} else {
-		console.warn('[playback] торренты', siteConfig.torrents.enabled ? 'выключены по config' : 'исключены');
+		console.warn('[playback] торренты', siteConfig.torrents.enabled ? 'исключены' : 'выключены по config');
 	}
 
 	/* ----------------------------- понятные ошибки --------------------------- */
 	if (itemId && !session && jellyfinAnon) error(401, 'Нужно войти');
 	if (itemId && !jellyfinAnon) error(503, 'Jellyfin не настроен');
+	if (torrentFailed) error(503, 'Сервер воспроизведения временно недоступен. Попробуйте позже.');
 	error(404, 'Тайтл не найден в медиатеке или торрент-источнике');
 };
 
-// Увеличиваем timeout для Vercel — торренты требуют до 60 сек на старт нового контента
-export const config = { 
-	maxDuration: 300, // 5 минут максимум (торренты могут долго стартовать)
-	runtime: 'nodejs20.x'
+// Холодный поиск и подготовка потока должны укладываться в лимит функции Vercel.
+export const config = {
+	maxDuration: 300,
+	runtime: 'nodejs22.x'
 };

@@ -1,0 +1,25 @@
+[Unit]
+Description=KIHEMA TorrServer HLS
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=kihema
+Group=kihema
+WorkingDirectory=/var/lib/kihema/torrserver
+ExecStart=/opt/kihema/bin/TorrServer-gst --ip 127.0.0.1 --port 8090 --path /var/lib/kihema/torrserver --torrentaddr :32000
+Restart=always
+RestartSec=3
+TimeoutStopSec=20
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectSystem=strict
+ProtectHome=true
+ReadWritePaths=/var/lib/kihema
+LimitNOFILE=65536
+MemoryHigh=1200M
+MemoryMax=1500M
+
+[Install]
+WantedBy=multi-user.target

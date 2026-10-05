@@ -59,18 +59,20 @@ export const config = {
 	/* --------------------- торренты: Jackett + TorrServer -------------------- */
 	/*
 	 * Основной источник воспроизведения. Поиск раздач идёт через Jackett и Torrentio,
-	 * раздачи транслируются через TorrServer MatriX.143 с cloudflared tunnel в HLS.
-	 * Включается переменной TORRSERVER_ENABLED=false для отключения.
+	 * раздачи транслируются через TorrServer с GStreamer и HTTPS-прокси в HLS.
+	 * Включён по умолчанию; TORRSERVER_ENABLED=false отключает источник.
 	 */
 	torrents: {
 		enabled: env.TORRSERVER_ENABLED !== 'false', // по умолчанию true на Vercel
-		serverUrl: envOr(env.TORRSERVER_URL, 'https://bone-motherboard-nutrition-inbox.trycloudflare.com').replace(/\/+$/, ''),
+		serverUrl: (env.TORRSERVER_URL ?? '').trim().replace(/\/+$/, ''),
+		/** Ключ управления VPS. Не добавляется в медиа-URL и не уходит в браузер. */
+		apiKey: (env.TORRSERVER_API_KEY ?? '').trim(),
 		/**
 		 * Discovery-точка на VPS: файл с актуальным URL quick-туннеля. URL меняется
 		 * при каждой перезагрузке VPS, поэтому адрес берём отсюда, а serverUrl
 		 * остаётся запасным.
 		 */
-		discoveryUrl: (env.TORRSERVER_DISCOVERY_URL ?? '').trim() || 'http://213.165.34.107:8091/tunnel.txt',
+		discoveryUrl: (env.TORRSERVER_DISCOVERY_URL ?? '').trim(),
 		jackettUrl: envOr(env.JACKETT_URL, 'https://jac.red').replace(/\/+$/, ''),
 		jackettApiKey: (env.JACKETT_API_KEY ?? '').trim(),
 		torrentioUrl: envOr(env.TORRENTIO_URL, 'https://torrentio.strem.fun').replace(/\/+$/, ''),
@@ -79,9 +81,11 @@ export const config = {
 
 	/* ------------------- совместный просмотр: сервер комнат ------------------ */
 	party: {
+		/** Постоянный HTTPS-адрес сервера комнат; discovery нужен только для туннелей. */
+		serverUrl: (env.PARTY_SERVER_URL ?? '').trim().replace(/\/+$/, ''),
 		/** Второй quick-туннель VPS, URL публикуется в party-tunnel.txt. */
 		discoveryUrl:
-			(env.PARTY_DISCOVERY_URL ?? '').trim() || 'http://213.165.34.107:8091/party-tunnel.txt'
+			(env.PARTY_DISCOVERY_URL ?? '').trim()
 	}
 } as const;
 
@@ -98,6 +102,10 @@ let tunnelCache: { at: number; url: string } | null = null;
  * Кеш на 5 минут, при сбое discovery — запасной TORRSERVER_URL.
  */
 export async function getTorrentServerUrl(): Promise<string> {
+	if (!config.torrents.discoveryUrl) {
+		if (!config.torrents.serverUrl) throw new Error('TORRSERVER_URL is not configured');
+		return config.torrents.serverUrl;
+	}
 	if (tunnelCache && tunnelCache.at + TUNNEL_TTL_MS > Date.now()) return tunnelCache.url;
 	try {
 		const res = await fetch(config.torrents.discoveryUrl, {
@@ -114,6 +122,7 @@ export async function getTorrentServerUrl(): Promise<string> {
 	} catch {
 		/* discovery недоступен — работаем с запасным адресом */
 	}
+	if (!config.torrents.serverUrl) throw new Error('TorrServer discovery is unavailable');
 	return config.torrents.serverUrl;
 }
 
@@ -122,11 +131,12 @@ export async function getTorrentServerUrl(): Promise<string> {
 let partyCache: { at: number; url: string } | null = null;
 
 /**
- * Актуальный адрес WebSocket-сервера комнат. В отличие от TorrServer запасного
- * адреса нет: если туннель не опубликован, совместный просмотр недоступен и
- * функция вернёт null — клиент покажет это явно.
+ * Постоянный адрес WebSocket-сервера комнат имеет приоритет. Если используется
+ * только discovery и он недоступен, вернём null — клиент покажет это явно.
  */
 export async function getPartyServerUrl(): Promise<string | null> {
+	if (config.party.serverUrl) return config.party.serverUrl;
+	if (!config.party.discoveryUrl) return null;
 	if (partyCache && partyCache.at + TUNNEL_TTL_MS > Date.now()) return partyCache.url;
 	try {
 		const res = await fetch(config.party.discoveryUrl, {

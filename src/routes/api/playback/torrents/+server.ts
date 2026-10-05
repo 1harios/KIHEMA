@@ -1,6 +1,6 @@
 import { error, json, type RequestHandler } from '@sveltejs/kit';
 import { config as siteConfig } from '$lib/server/config';
-import { listTorrentOptions } from '$lib/server/sources/torrserver';
+import { listTorrentOptions, TorrentServerUnavailableError } from '$lib/server/sources/torrserver';
 import type { MediaType } from '$lib/types';
 
 /**
@@ -21,13 +21,18 @@ export const POST: RequestHandler = async ({ request }) => {
 		error(400, 'Для сериала нужны season и episode');
 	}
 
-	const options = await listTorrentOptions({
-		type: body.type,
-		tmdbId: body.tmdbId,
-		season: body.season,
-		episode: body.episode
-	});
-	return json({ options });
+	try {
+		const options = await listTorrentOptions({
+			type: body.type,
+			tmdbId: body.tmdbId,
+			season: body.season,
+			episode: body.episode
+		});
+		return json({ options });
+	} catch (e) {
+		if (e instanceof TorrentServerUnavailableError) error(503, e.message);
+		throw e;
+	}
 };
 
 /** Поиск раздач у трекеров бывает медленным. */
